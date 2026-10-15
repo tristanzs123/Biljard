@@ -142,6 +142,36 @@ public static class BiljardSceneBuilder
         Debug.Log("Biljard: scena zgrajena -> " + ScenePath + ". Pritisni Play.");
     }
 
+    /// <summary>
+    /// Vsem kroglam v odprti sceni nastavi vrednosti kotaljenja na privzete iz Ball.cs.
+    /// (Unity si vrednosti shrani v sceno, zato sprememba v kodi sama ne vpliva na obstoječe krogle.)
+    /// </summary>
+    [MenuItem("Biljard/Ponastavi nastavitve krogel")]
+    public static void ResetBallSettings()
+    {
+        GameObject temp = new GameObject("temp", typeof(Rigidbody));
+        Ball defaults = temp.AddComponent<Ball>();
+
+        int count = 0;
+        foreach (Ball b in Object.FindObjectsByType<Ball>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (b == defaults) continue;
+            Undo.RecordObject(b, "Ponastavi krogle");
+            b.rollingDeceleration = defaults.rollingDeceleration;
+            b.linearDamping = defaults.linearDamping;
+            b.spinDecay = defaults.spinDecay;
+            b.stopSpeed = defaults.stopSpeed;
+            EditorUtility.SetDirty(b);
+            count++;
+        }
+        Object.DestroyImmediate(temp);
+
+        Scene scene = SceneManager.GetActiveScene();
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        Debug.Log($"Biljard: nastavitve kotaljenja posodobljene na {count} kroglah.");
+    }
+
     // ------------------------------------------------------------------ miza
 
     static GameObject BuildTable(Material felt, Material cushion, Material wood, Material pocketMat,

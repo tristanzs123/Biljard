@@ -14,11 +14,11 @@ public class Ball : MonoBehaviour
     public bool isCueBall;
 
     [Header("Kotaljenje po suknu")]
-    [Tooltip("Kotalni upor sukna (m/s²). Večje = krogla se prej ustavi. Realno okoli 0.3 - 0.6.")]
-    public float rollingDeceleration = 0.45f;
+    [Tooltip("Kotalni upor sukna (m/s²). Večje = krogla se prej ustavi. Občutek kot v 8 Ball Pool: okoli 0.2 - 0.3.")]
+    public float rollingDeceleration = 0.22f;
 
     [Tooltip("Upor zraka/sukna, ki je sorazmeren s hitrostjo (hitre krogle hitreje izgubijo hitrost).")]
-    public float linearDamping = 0.08f;
+    public float linearDamping = 0.12f;
 
     [Tooltip("Kako hitro izgine vrtenje okoli navpične osi (stranski efekt), v 1/s.")]
     public float spinDecay = 1.5f;
