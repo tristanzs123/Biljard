@@ -246,8 +246,8 @@ public static class BiljardSceneBuilder
         Rigidbody rb = go.GetComponent<Rigidbody>();
         if (rb == null) rb = go.AddComponent<Rigidbody>();
         rb.mass = 0.17f;
-        rb.linearDamping = 0.25f;
-        rb.angularDamping = 0.5f;
+        rb.linearDamping = 0.08f;
+        rb.angularDamping = 0.05f;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
 
