@@ -157,7 +157,7 @@ namespace Billiards.Gameplay
                 GUI.Label(new Rect(card.x, card.y + Px(20), cw, Px(50)), $"<b>{st.name}</b>", new GUIStyle(center) { fontSize = Px(34) });
                 string diff = game.Difficulties.Count > st.difficulty && game.Difficulties[st.difficulty] != null ? game.Difficulties[st.difficulty].displayName : "";
                 GUI.Label(new Rect(card.x, card.y + Px(75), cw, Px(34)), $"AI: {diff}", center);
-                GUI.Label(new Rect(card.x, card.y + Px(120), cw, Px(34)), $"Vstopnina: <b>{st.entryFee:N0}</b>", center);
+                GUI.Label(new Rect(card.x, card.y + Px(120), cw, Px(34)), st.entryFee == 0 ? "Vstopnina: <color=#7dff8a><b>BREZPLAČNO</b></color>" : $"Vstopnina: <b>{st.entryFee:N0}</b>", center);
                 GUI.Label(new Rect(card.x, card.y + Px(155), cw, Px(34)), $"Nagrada: <color=#ffd54a><b>{st.reward:N0}</b></color>", center);
                 GUI.Label(new Rect(card.x, card.y + Px(190), cw, Px(34)), $"+{st.winXp} XP za zmago", new GUIStyle(small) { alignment = TextAnchor.MiddleCenter });
 
@@ -332,7 +332,7 @@ namespace Billiards.Gameplay
             Stage st = game.CurrentStage >= 0 ? game.Progress.Stages[game.CurrentStage] : null;
             bool canAgain = st != null && game.Progress.Coins >= st.entryFee;
             GUI.enabled = canAgain;
-            if (GUI.Button(new Rect(Screen.width * 0.5f - bw - Px(10), by, bw, bh), st != null ? $"Igraj znova ({st.entryFee:N0})" : "Igraj znova", big)) game.PlayAgain();
+            if (GUI.Button(new Rect(Screen.width * 0.5f - bw - Px(10), by, bw, bh), st != null && st.entryFee > 0 ? $"Igraj znova ({st.entryFee:N0})" : "Igraj znova", big)) game.PlayAgain();
             GUI.enabled = true;
             if (GUI.Button(new Rect(Screen.width * 0.5f + Px(10), by, bw, bh), "Glavni meni", big)) game.Restart();
         }

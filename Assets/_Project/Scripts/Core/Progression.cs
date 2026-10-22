@@ -41,7 +41,7 @@ namespace Billiards.Core
 
         [SerializeField] Stage[] stages =
         {
-            new Stage { name = "Ljubljana",  entryFee = 50,   reward = 120,   requiredLevel = 1, difficulty = 0, winXp = 60,  clothColor = new Color(0.12f, 0.62f, 0.30f) },
+            new Stage { name = "Ljubljana",  entryFee = 0,   reward = 120,   requiredLevel = 1, difficulty = 0, winXp = 60,  clothColor = new Color(0.12f, 0.62f, 0.30f) },
             new Stage { name = "Maribor",    entryFee = 200,  reward = 450,   requiredLevel = 2, difficulty = 1, winXp = 100, clothColor = new Color(0.10f, 0.35f, 0.75f) },
             new Stage { name = "Ptuj",       entryFee = 600,  reward = 1400,  requiredLevel = 4, difficulty = 2, winXp = 160, clothColor = new Color(0.62f, 0.12f, 0.14f) },
             new Stage { name = "Las Vegas",  entryFee = 2000, reward = 5000,  requiredLevel = 6, difficulty = 3, winXp = 250, clothColor = new Color(0.38f, 0.16f, 0.55f) }
