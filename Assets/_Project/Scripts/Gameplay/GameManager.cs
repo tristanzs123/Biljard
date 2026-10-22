@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Billiards.AI;
+using Billiards.Core;
 using Billiards.Rules;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -22,6 +23,15 @@ namespace Billiards.Gameplay
 
         /// <summary>Pocketed balls per shot in percent.</summary>
         public int Accuracy => shots == 0 ? 0 : Mathf.RoundToInt(100f * Mathf.Min(1f, pocketed / (float)shots));
+    }
+
+    /// <summary>Rewards of the last finished game.</summary>
+    public struct GameReward
+    {
+        public bool won;
+        public int coins;
+        public int xp;
+        public int levelsGained;
     }
 
     /// <summary>
@@ -58,6 +68,12 @@ namespace Billiards.Gameplay
         public PlayerStats[] Stats { get; } = new PlayerStats[] { new PlayerStats(), new PlayerStats() };
         public bool BallInHandValid { get; private set; }
         public CueController Cue => cue;
+        public Progression Progress { get; private set; }
+        public int CurrentStage { get; private set; } = -1;
+        public GameReward LastReward { get; private set; }
+
+        static int pendingStage = -1;
+        float baseMaxSpeed;
         public AIPlayer AI => ai;
 
         readonly ShotResult shot = new ShotResult();
@@ -70,6 +86,8 @@ namespace Billiards.Gameplay
 
         void Awake()
         {
+            Progress = GetComponent<Progression>();
+            if (Progress == null) Progress = gameObject.AddComponent<Progression>();
             Time.fixedDeltaTime = fixedTimestep;
             Time.timeScale = 1f;
         }
@@ -99,11 +117,86 @@ namespace Billiards.Gameplay
             balls.AddRange(Ball.All);
             RandomizeRack();
             cue.HumanControl = false;
+            baseMaxSpeed = cue.maxSpeed;
             State = GameState.MainMenu;
+            ApplyCue();
+            ApplyStageVisuals(Mathf.Max(0, pendingStage));
+
+            if (pendingStage >= 0)
+            {
+                int s = pendingStage;
+                pendingStage = -1;
+                if (!StartStage(s)) State = GameState.MainMenu;
+            }
+        }
+
+        /// <summary>Pays the entry fee and starts a game at a stage. Returns false if locked or not enough coins.</summary>
+        public bool StartStage(int stageIndex)
+        {
+            Stage stage = Progress.Stages[stageIndex];
+            if (!Progress.IsUnlocked(stageIndex) || !Progress.TrySpend(stage.entryFee)) return false;
+            CurrentStage = stageIndex;
+            ApplyStageVisuals(stageIndex);
+            ApplyCue();
+            StartGame(stage.difficulty);
+            return true;
+        }
+
+        /// <summary>Plays the same stage again (reloads the scene).</summary>
+        public void PlayAgain()
+        {
+            pendingStage = CurrentStage;
+            Restart();
+        }
+
+        /// <summary>Applies the equipped cue (aim assist length, power and colour).</summary>
+        public void ApplyCue()
+        {
+            CueItem item = Progress.Cues[Progress.EquippedCue];
+            cue.assistLength = item.aimAssist;
+            cue.maxSpeed = baseMaxSpeed * (1f + item.powerBonus / 100f);
+            if (cue.stick != null)
+            {
+                Transform shaft = cue.stick.transform.Find("Les");
+                if (shaft != null) Tint(shaft.GetComponent<Renderer>(), item.shaftColor);
+            }
+        }
+
+        void ApplyStageVisuals(int stageIndex)
+        {
+            Color cloth = Progress.Stages[stageIndex].clothColor;
+            GameObject table = GameObject.Find("BiljardnaMiza");
+            if (table == null) return;
+            foreach (Renderer r in table.GetComponentsInChildren<Renderer>())
+            {
+                if (r.name == "Sukno") Tint(r, cloth);
+                else if (r.name.StartsWith("Blazina")) Tint(r, cloth * 0.85f);
+            }
+        }
+
+        static void Tint(Renderer r, Color c)
+        {
+            if (r == null) return;
+            var block = new MaterialPropertyBlock();
+            r.GetPropertyBlock(block);
+            block.SetColor("_BaseColor", c);
+            r.SetPropertyBlock(block);
+        }
+
+        void GiveRewards()
+        {
+            bool won = Rules.Winner == 0;
+            Stage stage = CurrentStage >= 0 ? Progress.Stages[CurrentStage] : null;
+            int coins = won && stage != null ? stage.reward : 0;
+            int xp = (won ? (stage != null ? stage.winXp : 50) : 20) + 5 * Stats[0].pocketed;
+            if (coins > 0) Progress.AddCoins(coins);
+            int levels = Progress.AddXp(xp);
+            if (!won) Progress.EnsureMinimumCoins();
+            LastReward = new GameReward { won = won, coins = coins, xp = xp, levelsGained = levels };
         }
 
         /// <summary>Starts a new game against the AI with the chosen difficulty index.</summary>
-        public void StartGame(int difficultyIndex)
+        void StartGame(int difficultyIndex)
         {
             Difficulty = difficulties.Length > 0 ? difficulties[Mathf.Clamp(difficultyIndex, 0, difficulties.Length - 1)] : null;
             if (Difficulty == null) Difficulty = ScriptableObject.CreateInstance<AIDifficultySettings>();
@@ -215,6 +308,7 @@ namespace Billiards.Gameplay
                 case ShotOutcomeType.Lose:
                     State = GameState.GameOver;
                     cue.HumanControl = false;
+                    GiveRewards();
                     Message?.Invoke(Rules.Winner == 0 ? "ZMAGA!" : "PORAZ - zmagal je AI");
                     return;
                 case ShotOutcomeType.Foul:

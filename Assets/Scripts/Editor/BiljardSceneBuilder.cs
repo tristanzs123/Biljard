@@ -53,8 +53,8 @@ public static class BiljardSceneBuilder
         foreach (string d in new[] { TexDir, MatDir, PhysDir, MeshDir, PrefabDir, SceneDir, DifficultyDir }) EnsureFolder(d);
 
         // ---- materials ----
-        Material felt = Lit("Felt", Color.white, 0.05f, Tex("Felt"), new Vector2(5f, 2.5f));
-        Material cushionMat = Lit("Cushion", new Color(0.82f, 0.86f, 0.82f), 0.05f, Tex("Felt"), new Vector2(4f, 0.2f));
+        Material felt = Lit("Felt", new Color(0.12f, 0.62f, 0.30f), 0.05f, Tex("Felt"), new Vector2(5f, 2.5f));
+        Material cushionMat = Lit("Cushion", new Color(0.10f, 0.53f, 0.26f), 0.05f, Tex("Felt"), new Vector2(4f, 0.2f));
         Material wood = Lit("Wood", Color.white, 0.6f, Tex("Wood"), new Vector2(2f, 1f));
         Material woodDark = Lit("WoodDark", new Color(0.45f, 0.4f, 0.38f), 0.5f, Tex("Wood"), new Vector2(1f, 1f));
         Material pocketMat = Lit("Pocket", new Color(0.01f, 0.01f, 0.01f), 0f, null, Vector2.one);
@@ -208,6 +208,7 @@ public static class BiljardSceneBuilder
         GameObject gameGO = new GameObject("Game");
         AIPlayer ai = gameGO.AddComponent<AIPlayer>();
         GameManager gm = gameGO.AddComponent<GameManager>();
+        gameGO.AddComponent<Billiards.Core.Progression>();
         GameHud hud = gameGO.AddComponent<GameHud>();
 
         var aiSo = new SerializedObject(ai);
