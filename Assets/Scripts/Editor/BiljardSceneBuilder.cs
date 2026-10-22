@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using Billiards.AI;
+using Billiards.Gameplay;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -20,7 +22,7 @@ public static class BiljardSceneBuilder
     const float CushionT = 0.05f;   // debelina bande
     const float CushionH = 0.045f;  // višina bande
     const float RailW = 0.10f;      // širina lesenega roba
-    const float CornerGap = 0.06f;  // odprtina kotne luknje (od vogala vzdolž bande)
+    const float CornerGap = 0.08f;  // odprtina kotne luknje (od vogala vzdolž bande) -> ust ~0.113 m
     const float SideGap = 0.065f;   // polovica odprtine srednje luknje
 
     const string MatDir = "Assets/Materials";
@@ -29,6 +31,7 @@ public static class BiljardSceneBuilder
     const string BallMatDir = "Assets/Eight-ball Rack/Materials";
     const string RackPath = "Assets/Eight-ball Rack/Prefabs/Rack.prefab";
     const string ScenePath = "Assets/Scenes/Biljard.unity";
+    const string DifficultyDir = "Assets/_Project/ScriptableObjects/AI";
 
     [MenuItem("Biljard/Zgradi sceno")]
     public static void Build()
@@ -38,22 +41,27 @@ public static class BiljardSceneBuilder
         EnsureFolder(MatDir);
         EnsureFolder(PhysDir);
         EnsureFolder(TableDir);
+        EnsureFolder(DifficultyDir);
 
         ConvertBallMaterialsToURP();
 
         // materiali
-        Material felt = LitMaterial("Felt", new Color(0.05f, 0.42f, 0.18f), 0.1f);
+        Material felt = LitMaterial("Felt", new Color(0.03f, 0.36f, 0.16f), 0.05f);
         Material cushion = LitMaterial("Cushion", new Color(0.04f, 0.33f, 0.14f), 0.1f);
         Material wood = LitMaterial("Wood", new Color(0.36f, 0.20f, 0.09f), 0.55f);
         Material pocketMat = LitMaterial("Pocket", new Color(0.02f, 0.02f, 0.02f), 0.0f);
-        Material floorMat = LitMaterial("Floor", new Color(0.25f, 0.25f, 0.27f), 0.2f);
+        Material floorMat = LitMaterial("Floor", new Color(0.07f, 0.06f, 0.06f), 0.15f);
+        Material stickMat = LitMaterial("Stick", new Color(0.78f, 0.58f, 0.32f), 0.65f);
+        Material stickButtMat = LitMaterial("StickButt", new Color(0.12f, 0.06f, 0.03f), 0.7f);
+        Material chalkMat = LitMaterial("Chalk", new Color(0.15f, 0.35f, 0.75f), 0.1f);
+        Material ghostMat = GhostMaterial();
         Material cueBallMat = LitMaterial("CueBall", new Color(0.95f, 0.95f, 0.92f), 0.85f);
         Material aimMat = AimMaterial();
 
         // fizikalni materiali (bounce se množi, trenje povpreči)
-        PhysicsMaterial ballPM = PhysMaterial("Ball", 0.1f, 0.95f);
+        PhysicsMaterial ballPM = PhysMaterial("Ball", 0.06f, 0.965f);      // ball-ball: 0.965² ≈ 0.93
         PhysicsMaterial feltPM = PhysMaterial("Felt", 0.4f, 0.0f);
-        PhysicsMaterial cushionPM = PhysMaterial("Cushion", 0.2f, 0.8f);
+        PhysicsMaterial cushionPM = PhysMaterial("Cushion", 0.2f, 0.81f); // ball-cushion: 0.965·0.81 ≈ 0.78
         PhysicsMaterial woodPM = PhysMaterial("Wood", 0.3f, 0.5f);
 
         AssetDatabase.SaveAssets();
@@ -103,35 +111,94 @@ public static class BiljardSceneBuilder
         Camera cam = Object.FindFirstObjectByType<Camera>();
         if (cam != null)
         {
-            cam.transform.position = new Vector3(0f, 2.4f, -1.35f);
+            cam.transform.position = new Vector3(0f, 2.3f, -1.45f);
             cam.transform.LookAt(new Vector3(0f, 0f, 0.05f));
             cam.fieldOfView = 50f;
             cam.nearClipPlane = 0.05f;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.03f, 0.03f, 0.035f);
         }
+        CameraViews views = cam != null ? cam.gameObject.AddComponent<CameraViews>() : null;
 
-        // ---- luč ----
+        // ---- luči: temna biljardnica, spot luč nad mizo ----
+        RenderSettings.skybox = null;
+        RenderSettings.ambientMode = AmbientMode.Flat;
+        RenderSettings.ambientLight = new Color(0.16f, 0.16f, 0.17f);
         Light sun = Object.FindFirstObjectByType<Light>();
         if (sun != null)
         {
-            sun.transform.rotation = Quaternion.Euler(60f, -30f, 0f);
-            sun.intensity = 1.2f;
+            sun.transform.rotation = Quaternion.Euler(70f, -30f, 0f);
+            sun.intensity = 0.25f;
             sun.shadows = LightShadows.Soft;
         }
+        foreach (float x in new[] { -0.7f, 0.7f })
+        {
+            GameObject lampGO = new GameObject("Luc nad mizo");
+            lampGO.transform.SetPositionAndRotation(new Vector3(x, 1.4f, 0f), Quaternion.Euler(90f, 0f, 0f));
+            Light lamp = lampGO.AddComponent<Light>();
+            lamp.type = LightType.Spot;
+            lamp.spotAngle = 105f;
+            lamp.innerSpotAngle = 60f;
+            lamp.range = 4f;
+            lamp.intensity = 2.2f;
+            lamp.color = new Color(1f, 0.95f, 0.86f);
+            lamp.shadows = LightShadows.Soft;
+        }
 
-        // ---- merilna črta + kontrola udarca ----
-        GameObject aimGO = new GameObject("Merilna crta");
-        LineRenderer line = aimGO.AddComponent<LineRenderer>();
-        line.useWorldSpace = true;
-        line.positionCount = 2;
-        line.widthMultiplier = 0.008f;
-        line.sharedMaterial = aimMat;
-        line.shadowCastingMode = ShadowCastingMode.Off;
-        line.receiveShadows = false;
-        line.enabled = false;
+        // ---- pomoč pri merjenju ----
+        LineRenderer aimLine = MakeLine("Merilna crta", aimMat, new Color(1f, 1f, 1f, 0.9f));
+        LineRenderer objectLine = MakeLine("Smer krogle", aimMat, new Color(1f, 0.85f, 0.3f, 0.9f));
+        LineRenderer deflectLine = MakeLine("Smer bele", aimMat, new Color(0.5f, 0.8f, 1f, 0.8f));
+        GameObject ghost = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        ghost.name = "Ghost ball";
+        Object.DestroyImmediate(ghost.GetComponent<Collider>());
+        ghost.transform.localScale = Vector3.one * (2f * R);
+        Renderer ghostRenderer = ghost.GetComponent<Renderer>();
+        ghostRenderer.sharedMaterial = ghostMat;
+        ghostRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        ghost.SetActive(false);
+
+        // ---- palica ----
+        CueStick stick = BuildStick(stickMat, stickButtMat, chalkMat);
 
         CueController controller = cue.gameObject.AddComponent<CueController>();
         controller.cam = cam;
-        controller.aimLine = line;
+        controller.stick = stick;
+        controller.aimLine = aimLine;
+        controller.objectLine = objectLine;
+        controller.deflectLine = deflectLine;
+        controller.ghostBall = ghost.transform;
+
+        // ---- igra: GameManager + AI + HUD ----
+        AIDifficultySettings[] levels =
+        {
+            Difficulty("Lahka", 2.6f, 25f, false, false, 0.35f, 0.0f),
+            Difficulty("Srednja", 1.2f, 12f, false, true, 0.15f, 0.12f),
+            Difficulty("Tezka", 0.5f, 6f, true, true, 0.05f, 0.15f),
+            Difficulty("Profesionalna", 0.15f, 3f, true, true, 0f, 0.2f)
+        };
+
+        GameObject gameGO = new GameObject("Game");
+        AIPlayer ai = gameGO.AddComponent<AIPlayer>();
+        GameManager gm = gameGO.AddComponent<GameManager>();
+        GameHud hud = gameGO.AddComponent<GameHud>();
+
+        var aiSo = new SerializedObject(ai);
+        aiSo.FindProperty("cue").objectReferenceValue = controller;
+        aiSo.ApplyModifiedPropertiesWithoutUndo();
+
+        var gmSo = new SerializedObject(gm);
+        gmSo.FindProperty("cue").objectReferenceValue = controller;
+        gmSo.FindProperty("ai").objectReferenceValue = ai;
+        gmSo.FindProperty("cameraViews").objectReferenceValue = views;
+        SerializedProperty diffs = gmSo.FindProperty("difficulties");
+        diffs.arraySize = levels.Length;
+        for (int i = 0; i < levels.Length; i++) diffs.GetArrayElementAtIndex(i).objectReferenceValue = levels[i];
+        gmSo.ApplyModifiedPropertiesWithoutUndo();
+
+        var hudSo = new SerializedObject(hud);
+        hudSo.FindProperty("game").objectReferenceValue = gm;
+        hudSo.ApplyModifiedPropertiesWithoutUndo();
 
         // ---- shrani ----
         EditorSceneManager.SaveScene(scene, ScenePath);
@@ -184,19 +251,29 @@ public static class BiljardSceneBuilder
         Box("Podlaga", root, new Vector3(0f, -0.02f, 0f),
             new Vector3(L + 2f * CushionT, 0.04f, W + 2f * CushionT), felt, feltPM);
 
-        // bande (6 kosov, vmes luknje)
+        // bande (6 kosov) z zaobljenimi konci ob luknjah ("jaws"), da krogle ne obtičijo na ostrih robovih
         float cy = CushionH / 2f;
-        float longLen = L / 2f - CornerGap - SideGap;
-        float longX = (L / 2f - CornerGap + SideGap) / 2f;
         float bandZ = W / 2f + CushionT / 2f;
         float bandX = L / 2f + CushionT / 2f;
+        float r = CushionT / 2f;
         foreach (float sx in new[] { -1f, 1f })
         foreach (float sz in new[] { -1f, 1f })
-            Box("Banda", root, new Vector3(sx * longX, cy, sz * bandZ),
-                new Vector3(longLen, CushionH, CushionT), cushion, cushionPM);
+        {
+            float a = SideGap + r;               // konec ob srednji luknji
+            float b = L / 2f - CornerGap - r;    // konec ob kotni luknji
+            Box("Banda", root, new Vector3(sx * (a + b) / 2f, cy, sz * bandZ),
+                new Vector3(b - a, CushionH, CushionT), cushion, cushionPM).AddComponent<Cushion>();
+            Jaw(root, new Vector3(sx * a, cy, sz * bandZ), cushion, cushionPM);
+            Jaw(root, new Vector3(sx * b, cy, sz * bandZ), cushion, cushionPM);
+        }
         foreach (float sx in new[] { -1f, 1f })
+        {
+            float e = W / 2f - CornerGap - r;
             Box("Banda", root, new Vector3(sx * bandX, cy, 0f),
-                new Vector3(CushionT, CushionH, W - 2f * CornerGap), cushion, cushionPM);
+                new Vector3(CushionT, CushionH, 2f * e), cushion, cushionPM).AddComponent<Cushion>();
+            Jaw(root, new Vector3(sx * bandX, cy, e), cushion, cushionPM);
+            Jaw(root, new Vector3(sx * bandX, cy, -e), cushion, cushionPM);
+        }
 
         // lesen rob
         float railH = 0.09f;
@@ -223,9 +300,9 @@ public static class BiljardSceneBuilder
         int n = 1;
         foreach (float sx in new[] { -1f, 1f })
         foreach (float sz in new[] { -1f, 1f })
-            PocketAt("Luknja " + n++, root, new Vector3(sx * (L / 2f + 0.02f), 0f, sz * (W / 2f + 0.02f)), 0.12f, pocketMat);
+            PocketAt("Luknja " + n++, root, new Vector3(sx * (L / 2f + 0.02f), 0f, sz * (W / 2f + 0.02f)), 0.13f, pocketMat);
         foreach (float sz in new[] { -1f, 1f })
-            PocketAt("Luknja " + n++, root, new Vector3(0f, 0f, sz * (W / 2f + 0.035f)), 0.13f, pocketMat);
+            PocketAt("Luknja " + n++, root, new Vector3(0f, 0f, sz * (W / 2f + 0.035f)), 0.14f, pocketMat);
 
         return table;
     }
@@ -265,6 +342,102 @@ public static class BiljardSceneBuilder
         trigger.AddComponent<Pocket>();
     }
 
+    /// <summary>Rounded cushion end (vertical cylinder) at a pocket mouth.</summary>
+    static void Jaw(Transform parent, Vector3 center, Material mat, PhysicsMaterial pm)
+    {
+        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        go.name = "Banda (rob ob luknji)";
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = center;
+        go.transform.localScale = new Vector3(CushionT, CushionH / 2f, CushionT);
+        go.GetComponent<Renderer>().sharedMaterial = mat;
+        go.GetComponent<Collider>().sharedMaterial = pm;
+        go.AddComponent<Cushion>();
+        go.isStatic = true;
+    }
+
+    static LineRenderer MakeLine(string name, Material mat, Color color)
+    {
+        GameObject go = new GameObject(name);
+        LineRenderer line = go.AddComponent<LineRenderer>();
+        line.useWorldSpace = true;
+        line.positionCount = 2;
+        line.widthMultiplier = 0.006f;
+        line.sharedMaterial = mat;
+        line.startColor = color;
+        line.endColor = color;
+        line.shadowCastingMode = ShadowCastingMode.Off;
+        line.receiveShadows = false;
+        line.enabled = false;
+        return line;
+    }
+
+    static CueStick BuildStick(Material shaft, Material butt, Material chalk)
+    {
+        GameObject root = new GameObject("Palica");
+        // the root's Y axis points from butt to tip; length 1.45 m centred on the root
+        Part(root.transform, "Les", new Vector3(0f, 0.15f, 0f), new Vector3(0.022f, 0.575f, 0.022f), shaft);
+        Part(root.transform, "Rocaj", new Vector3(0f, -0.5f, 0f), new Vector3(0.032f, 0.225f, 0.032f), butt);
+        Part(root.transform, "Konica", new Vector3(0f, 0.72f, 0f), new Vector3(0.0215f, 0.006f, 0.0215f), chalk);
+        return root.AddComponent<CueStick>();
+    }
+
+    static void Part(Transform parent, string name, Vector3 pos, Vector3 scale, Material mat)
+    {
+        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        go.name = name;
+        Object.DestroyImmediate(go.GetComponent<Collider>());
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = pos;
+        go.transform.localScale = scale;
+        Renderer rend = go.GetComponent<Renderer>();
+        rend.sharedMaterial = mat;
+        rend.shadowCastingMode = ShadowCastingMode.On;
+    }
+
+    static AIDifficultySettings Difficulty(string name, float angle, float power, bool position, bool safety,
+                                           float bad, float minScore)
+    {
+        string path = DifficultyDir + "/AI_" + name + ".asset";
+        AIDifficultySettings d = AssetDatabase.LoadAssetAtPath<AIDifficultySettings>(path);
+        if (d == null)
+        {
+            d = ScriptableObject.CreateInstance<AIDifficultySettings>();
+            AssetDatabase.CreateAsset(d, path);
+        }
+        d.displayName = name == "Tezka" ? "Težka" : name;
+        d.angleErrorDeg = angle;
+        d.powerErrorPercent = power;
+        d.usePosition = position;
+        d.playSafety = safety;
+        d.badDecisionChance = bad;
+        d.minPotScore = minScore;
+        EditorUtility.SetDirty(d);
+        return d;
+    }
+
+    static Material GhostMaterial()
+    {
+        string path = MatDir + "/Ghost.mat";
+        Material m = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (m == null)
+        {
+            m = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            AssetDatabase.CreateAsset(m, path);
+        }
+        m.SetFloat("_Surface", 1f);
+        m.SetFloat("_Blend", 0f);
+        m.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+        m.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+        m.SetFloat("_ZWrite", 0f);
+        m.SetOverrideTag("RenderType", "Transparent");
+        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        m.renderQueue = (int)RenderQueue.Transparent;
+        m.SetColor("_BaseColor", new Color(1f, 1f, 1f, 0.35f));
+        EditorUtility.SetDirty(m);
+        return m;
+    }
+
     // ------------------------------------------------------------------ krogle
 
     static Ball SetupBall(GameObject go, PhysicsMaterial pm, bool isCue)
@@ -276,7 +449,7 @@ public static class BiljardSceneBuilder
         Rigidbody rb = go.GetComponent<Rigidbody>();
         if (rb == null) rb = go.AddComponent<Rigidbody>();
         rb.mass = 0.17f;
-        rb.linearDamping = 0.08f;
+        rb.linearDamping = 0.12f;
         rb.angularDamping = 0.05f;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
