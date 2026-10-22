@@ -70,7 +70,13 @@ public class Ball : MonoBehaviour
     void OnEnable() => All.Add(this);
     void OnDisable() => All.Remove(this);
 
-    float MaxRestSpin => stopSpeed / Radius;
+    [Tooltip("Spin (rad/s) below which a ball that is not moving counts as stopped.")]
+    [Range(0.1f, 5f)] public float restSpin = 1.5f;
+
+    [Tooltip("How fast a ball spinning in place stops (rad/s²).")]
+    [Range(1f, 50f)] public float spinBrake = 12f;
+
+    float MaxRestSpin => Mathf.Max(restSpin, stopSpeed / Radius);
 
     /// <summary>Is the ball still moving (or sinking).</summary>
     public bool IsMoving =>
@@ -78,6 +84,19 @@ public class Ball : MonoBehaviour
         (!Body.isKinematic && !Body.IsSleeping() &&
          (Body.linearVelocity.sqrMagnitude > stopSpeed * stopSpeed ||
           Body.angularVelocity.sqrMagnitude > MaxRestSpin * MaxRestSpin));
+
+    /// <summary>Stops every ball immediately (used as a safety net).</summary>
+    public static void StopAll()
+    {
+        for (int i = 0; i < All.Count; i++)
+        {
+            Ball b = All[i];
+            if (b.Body.isKinematic) continue;
+            b.Body.linearVelocity = Vector3.zero;
+            b.Body.angularVelocity = Vector3.zero;
+            b.Body.Sleep();
+        }
+    }
 
     /// <summary>Is any ball on the table moving.</summary>
     public static bool AnyMoving()
@@ -120,14 +139,25 @@ public class Ball : MonoBehaviour
         if (transform.position.y > Radius + 0.01f) return; // airborne
 
         Vector3 v = Body.linearVelocity;
+        Vector3 w = Body.angularVelocity;
         float speed = Mathf.Sqrt(v.x * v.x + v.z * v.z);
         if (speed > 0.0001f)
         {
             float k = Mathf.Max(0f, speed - rollingDeceleration * dt) / speed;
             Body.linearVelocity = new Vector3(v.x * k, v.y, v.z * k);
-            Vector3 w = Body.angularVelocity;
-            Body.angularVelocity = new Vector3(w.x * k, w.y * Mathf.Max(0f, 1f - spinDecay * dt), w.z * k);
+            w = new Vector3(w.x * k, w.y, w.z * k);
         }
+
+        // side spin fades out
+        w.y *= Mathf.Max(0f, 1f - spinDecay * dt);
+
+        // a ball spinning in place (e.g. after hitting a cushion) is braked by the cloth until it stops
+        if (speed < stopSpeed * 3f)
+        {
+            float mag = w.magnitude;
+            if (mag > 0f) w *= Mathf.Max(0f, mag - spinBrake * dt) / mag;
+        }
+        Body.angularVelocity = w;
     }
 
     void OnCollisionEnter(Collision collision)

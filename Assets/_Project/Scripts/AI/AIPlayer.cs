@@ -102,6 +102,7 @@ namespace Billiards.AI
             }
 
             Status = "";
+            Debug.Log($"[Biljard] AI strel: cilj={(shot.target != null ? shot.target.number : -1)}, moč={power:0.00}, safety={shot.isSafety}, ocena={shot.score:0.00}");
             cue.TakeShot(dir, power);
         }
     }

@@ -61,6 +61,9 @@ namespace Billiards.Gameplay
         [Tooltip("Shot is evaluated only after this minimum time (s).")]
         [SerializeField] float minShotTime = 0.3f;
 
+        [Tooltip("After this time (s) all balls are stopped and the shot is evaluated anyway.")]
+        [SerializeField] float maxShotTime = 10f;
+
         public GameState State { get; private set; } = GameState.MainMenu;
         public RulesEngine Rules { get; private set; }
         public AIDifficultySettings Difficulty { get; private set; }
@@ -243,6 +246,13 @@ namespace Billiards.Gameplay
                 case GameState.BallsMoving:
                     if (Time.time - shotStartTime > minShotTime && !Ball.AnyMoving() && !cue.IsShooting)
                         EvaluateShot();
+                    else if (Time.time - shotStartTime > maxShotTime)
+                    {
+                        // safety net: a ball jittering somewhere must never block the game
+                        LogMovingBalls();
+                        Ball.StopAll();
+                        EvaluateShot();
+                    }
                     break;
                 case GameState.BallInHand:
                     UpdateHumanBallInHand();
@@ -283,6 +293,13 @@ namespace Billiards.Gameplay
             if (State == GameState.PlayerAiming) cue.HumanControl = true;
         }
 
+        static void LogMovingBalls()
+        {
+            foreach (Ball b in Ball.All)
+                if (b.IsMoving)
+                    Debug.LogWarning($"Krogla {b.name} se še premika: v={b.Body.linearVelocity.magnitude:0.000} w={b.Body.angularVelocity.magnitude:0.00} y={b.transform.position.y:0.000}");
+        }
+
         void OnShotFired(Vector3 dir, float power)
         {
             if (Rules == null) return;
@@ -302,6 +319,7 @@ namespace Billiards.Gameplay
             foreach (int n in shot.Pocketed) if (n != 0) Stats[shooter].pocketed++;
 
             ShotOutcome outcome = Rules.Evaluate(shot);
+            Debug.Log($"[Biljard] {(shooter == 0 ? "TI" : "AI")}: prva zadeta={shot.FirstHitBall}, potopljene={shot.Pocketed.Count}, blazina po stiku={shot.CushionAfterContact} -> {outcome.Type} {outcome.Message}");
             switch (outcome.Type)
             {
                 case ShotOutcomeType.Win:
