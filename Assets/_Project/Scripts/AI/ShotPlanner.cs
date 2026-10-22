@@ -30,10 +30,10 @@ namespace Billiards.AI
         public float maxCutAngle = 75f;
 
         /// <summary>Approximate deceleration used to estimate the needed power (m/s²).</summary>
-        public float effectiveDeceleration = 0.45f;
+        public float effectiveDeceleration = 0.6f;
 
         /// <summary>Speed the object ball should still have at the pocket (m/s).</summary>
-        public float pocketEntrySpeed = 0.6f;
+        public float pocketEntrySpeed = 0.9f;
 
         /// <summary>Maximum cue ball speed of the CueController (m/s).</summary>
         public float maxSpeed = 7f;
@@ -144,8 +144,8 @@ namespace Billiards.AI
             float cos = Mathf.Cos(cut * Mathf.Deg2Rad);
             float vObj = SpeedForDistance(dObj, pocketEntrySpeed);
             float vGhost = vObj / Mathf.Max(0.2f, cos * 0.93f);
-            float vCue = SpeedForDistance(dCue, vGhost) * 1.12f;
-            float power = Mathf.Clamp(vCue / maxSpeed, 0.12f, 1f);
+            float vCue = SpeedForDistance(dCue, vGhost) * 1.35f; // margin for sliding friction and collision losses
+            float power = Mathf.Clamp(vCue / maxSpeed, 0.22f, 1f);
 
             float score = 1f
                           - 0.55f * (cut / maxCutAngle)
@@ -248,7 +248,7 @@ namespace Billiards.AI
                 float toCushion = DistanceToCushion(p, dir);
                 float vObj = SpeedForDistance(toCushion + 0.3f, 0.3f);
                 float vCue = SpeedForDistance(d, vObj / 0.93f) * 1.1f;
-                float power = Mathf.Clamp(vCue / maxSpeed, 0.12f, 0.6f);
+                float power = Mathf.Clamp(vCue * 1.3f / maxSpeed, 0.25f, 0.7f);
 
                 // prefer far-away targets and leaving the cue ball far from the object balls
                 float score = 0.1f + 0.05f * d;

@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using Billiards.Gameplay;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -148,29 +147,34 @@ public class CueController : MonoBehaviour
         if (IsShooting) return;
         dir.y = 0f;
         aimDir = dir.normalized;
-        StartCoroutine(ShotRoutine(aimDir, Mathf.Clamp01(power01)));
-    }
+        Vector3 shotDir = aimDir;
+        float shotPower = Mathf.Clamp01(power01);
 
-    IEnumerator ShotRoutine(Vector3 dir, float power01)
-    {
         IsShooting = true;
         HideAssist();
-        Vector3 cuePos = ball.Body.position;
+        // The strike coroutine runs on the STICK, not on the cue ball: if the cue ball is pocketed
+        // (and deactivated) the animation must not be killed, otherwise IsShooting would stay true forever.
         if (stick != null)
-            yield return stick.Strike(cuePos, dir, power01, () => ApplyShot(dir, power01));
+            stick.StartCoroutine(stick.Strike(ball.Body.position, shotDir, shotPower, () => ApplyShot(shotDir, shotPower)));
         else
-            ApplyShot(dir, power01);
-        IsShooting = false;
+            ApplyShot(shotDir, shotPower);
     }
 
     void ApplyShot(Vector3 dir, float power01)
     {
+        IsShooting = false;
+        if (!gameObject.activeInHierarchy) return;
         ball.Body.WakeUp();
-        float speed = power01 * maxSpeed;
-        ball.Body.linearVelocity = dir * speed;
+        ball.Body.linearVelocity = dir * (power01 * maxSpeed);
         // start without spin: cloth friction turns sliding into natural rolling
         ball.Body.angularVelocity = Vector3.zero;
         ShotFired?.Invoke(dir, power01);
+    }
+
+    void OnDisable()
+    {
+        IsCharging = false;
+        CurrentPower = 0f;
     }
 
     void DrawAssist(Vector3 cuePos, Vector3 dir)
