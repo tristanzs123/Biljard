@@ -195,6 +195,15 @@ namespace Billiards.Rules
             return new ShotOutcome(ShotOutcomeType.SwitchTurn, "Menjava poteze");
         }
 
+        /// <summary>The shot clock ran out: foul, the opponent gets ball in hand.</summary>
+        public ShotOutcome Timeout()
+        {
+            CurrentPlayer = 1 - CurrentPlayer;
+            BallInHand = true;
+            BallInHandKitchenOnly = IsBreak;
+            return new ShotOutcome(ShotOutcomeType.Foul, "PREKRŠEK: čas je potekel");
+        }
+
         string FindFoul(ShotResult r, int player, bool isBreak, bool groupCleared, bool tableOpen)
         {
             if (r.CueBallPocketed) return "bela v luknji";

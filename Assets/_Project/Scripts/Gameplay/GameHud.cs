@@ -20,8 +20,16 @@ namespace Billiards.Gameplay
         string banner = "";
         float bannerUntil;
         MenuTab tab = MenuTab.Play;
-        GUIStyle title, big, button, normal, small, center, bannerStyle, coinStyle;
-        Texture2D white;
+        GUIStyle title, big, button, normal, small, center, bannerStyle, coinStyle, ballNum;
+        Texture2D white, disc;
+
+        static readonly Color[] BallColors =
+        {
+            Color.white,
+            new Color32(247, 198, 0, 255), new Color32(21, 68, 181, 255), new Color32(214, 40, 40, 255),
+            new Color32(91, 44, 143, 255), new Color32(240, 127, 18, 255), new Color32(19, 122, 58, 255),
+            new Color32(122, 31, 31, 255), new Color32(18, 18, 18, 255)
+        };
         float s;
 
         void OnEnable() { if (game != null) game.Message += ShowBanner; }
@@ -50,6 +58,9 @@ namespace Billiards.Gameplay
             bannerStyle = new GUIStyle(title) { fontSize = Px(46) };
             coinStyle = new GUIStyle(normal) { fontSize = Px(28), fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
             coinStyle.normal.textColor = new Color(1f, 0.83f, 0.25f);
+            ballNum = new GUIStyle(GUI.skin.label) { fontSize = Px(15), fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            ballNum.normal.textColor = Color.black;
+            if (disc == null) disc = MakeDisc(64);
         }
 
         int Px(float v) => Mathf.Max(10, Mathf.RoundToInt(v * s));
@@ -249,8 +260,11 @@ namespace Billiards.Gameplay
             RulesEngine rules = game.Rules;
             if (rules == null) return;
 
-            Shade(new Rect(0, 0, Screen.width, Px(56)), 0.55f);
+            Shade(new Rect(0, 0, Screen.width, Px(108)), 0.55f);
             bool myTurn = rules.CurrentPlayer == 0;
+            DrawBallTray(rules, 0, new Rect(Px(20), Px(54), Screen.width * 0.4f, Px(40)), false);
+            DrawBallTray(rules, 1, new Rect(Screen.width * 0.6f - Px(20), Px(54), Screen.width * 0.4f, Px(40)), true);
+            DrawShotClock(myTurn);
             string me = $"{(myTurn ? "» " : "")}<b>TI</b>  {GroupText(rules, 0)}";
             string ai = $"{GroupText(rules, 1)}  <b>AI ({game.Difficulty.displayName})</b>{(!myTurn ? " «" : "")}";
             GUI.Label(new Rect(Px(20), Px(10), Screen.width * 0.4f, Px(40)), me, normal);
@@ -269,7 +283,7 @@ namespace Billiards.Gameplay
                 _ => myTurn && rules.IsBreak ? "Razbij trikotnik!" : ""
             };
             if (!string.IsNullOrEmpty(status))
-                GUI.Label(new Rect(0, Px(62), Screen.width, Px(40)), status, center);
+                GUI.Label(new Rect(0, Px(112), Screen.width, Px(40)), status, center);
 
             CueController cue = game.Cue;
             if (cue != null && cue.IsCharging)
@@ -282,6 +296,97 @@ namespace Billiards.Gameplay
                     Color.Lerp(new Color(0.3f, 0.9f, 0.3f), new Color(1f, 0.2f, 0.1f), p));
                 GUI.Label(new Rect(bar.x - Px(10), bar.yMax + Px(4), Px(120), Px(30)), $"{Mathf.RoundToInt(p * 100)} %", normal);
             }
+        }
+
+        /// <summary>8 Ball Pool style tray: the player's 7 balls, pocketed ones faded out, then the 8.</summary>
+        void DrawBallTray(RulesEngine rules, int player, Rect area, bool alignRight)
+        {
+            BallGroup g = rules.GetGroup(player);
+            float d = Px(34), gap = Px(6);
+            int count = 8;
+            float total = count * d + (count - 1) * gap;
+            float x = alignRight ? area.xMax - total : area.x;
+            int pocketed = 0;
+            for (int i = 0; i < 7; i++)
+            {
+                Rect r = new Rect(x + i * (d + gap), area.y, d, d);
+                if (g == BallGroup.None)
+                {
+                    DrawDisc(r, new Color(1f, 1f, 1f, 0.15f));
+                    continue;
+                }
+                int n = g == BallGroup.Solids ? i + 1 : i + 9;
+                bool onTable = rules.IsOnTable(n);
+                if (!onTable) pocketed++;
+                DrawBall(r, n, onTable ? 1f : 0.18f);
+            }
+            Rect eight = new Rect(x + 7 * (d + gap), area.y, d, d);
+            bool eightTurn = g != BallGroup.None && rules.RemainingInGroup(player) == 0;
+            DrawBall(eight, 8, eightTurn ? 1f : 0.25f);
+
+            string label = g == BallGroup.None ? "" : $"Potopljene: <b>{pocketed}/7</b>";
+            GUI.Label(new Rect(alignRight ? x - Px(190) : x + total + Px(12), area.y + Px(4), Px(180), d), label,
+                new GUIStyle(small) { alignment = alignRight ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft });
+        }
+
+        void DrawBall(Rect r, int n, float alpha)
+        {
+            Color baseColor = BallColors[n <= 8 ? n : n - 8];
+            if (n >= 9)
+            {
+                DrawDisc(r, new Color(0.96f, 0.95f, 0.9f, alpha));
+                float inset = r.height * 0.2f;
+                DrawDisc(new Rect(r.x + inset * 0.15f, r.y + inset, r.width - inset * 0.3f, r.height - 2f * inset), new Color(baseColor.r, baseColor.g, baseColor.b, alpha));
+            }
+            else
+            {
+                DrawDisc(r, new Color(baseColor.r, baseColor.g, baseColor.b, alpha));
+            }
+            float c = r.width * 0.5f;
+            Rect inner = new Rect(r.x + c * 0.5f, r.y + c * 0.5f, c, c);
+            DrawDisc(inner, new Color(1f, 1f, 1f, alpha));
+            Color old = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, alpha);
+            GUI.Label(r, n.ToString(), ballNum);
+            GUI.color = old;
+        }
+
+        void DrawShotClock(bool myTurn)
+        {
+            if (game.TurnTimeLimit <= 0f) return;
+            GameState st = game.State;
+            if (st != GameState.PlayerAiming && st != GameState.BallInHand && st != GameState.AITurn) return;
+
+            float t = game.TurnTimeLeft / game.TurnTimeLimit;
+            float w = Px(260), h = Px(12);
+            Rect bar = new Rect(myTurn ? Px(20) : Screen.width - w - Px(20), Px(96), w, h);
+            Fill(bar, new Color(0.1f, 0.1f, 0.1f, 0.9f));
+            Color c = t > 0.33f ? new Color(0.3f, 0.85f, 0.4f) : t > 0.15f ? new Color(1f, 0.75f, 0.2f) : new Color(1f, 0.25f, 0.2f);
+            Fill(new Rect(bar.x, bar.y, bar.width * t, bar.height), c);
+            GUI.Label(new Rect(myTurn ? bar.xMax + Px(8) : bar.x - Px(70), bar.y - Px(9), Px(62), Px(30)),
+                $"<b>{Mathf.CeilToInt(game.TurnTimeLeft)} s</b>", new GUIStyle(small) { alignment = myTurn ? TextAnchor.MiddleLeft : TextAnchor.MiddleRight });
+        }
+
+        void DrawDisc(Rect r, Color c)
+        {
+            Color old = GUI.color;
+            GUI.color = new Color(c.r, c.g, c.b, c.a * old.a);
+            GUI.DrawTexture(r, disc);
+            GUI.color = old;
+        }
+
+        static Texture2D MakeDisc(int size)
+        {
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            float r = size * 0.5f;
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float d = Mathf.Sqrt((x + 0.5f - r) * (x + 0.5f - r) + (y + 0.5f - r) * (y + 0.5f - r));
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Clamp01(r - d)));
+            }
+            tex.Apply();
+            return tex;
         }
 
         static string GroupText(RulesEngine rules, int player)

@@ -36,8 +36,17 @@ public class CueController : MonoBehaviour
     [Tooltip("Fine aim (Shift) smoothing factor.")]
     [Range(0.01f, 1f)] public float fineAimFactor = 0.08f;
 
-    /// <summary>Human mouse input is enabled.</summary>
-    public bool HumanControl { get; set; }
+    /// <summary>Human mouse input is enabled. Disabling it cancels a shot being charged.</summary>
+    public bool HumanControl
+    {
+        get => humanControl;
+        set
+        {
+            humanControl = value;
+            if (!value) { IsCharging = false; CurrentPower = 0f; }
+        }
+    }
+    bool humanControl;
 
     /// <summary>Current power 0..1 while charging.</summary>
     public float CurrentPower { get; private set; }

@@ -39,6 +39,9 @@ public static class BiljardSceneBuilder
     const string ScenePath = SceneDir + "/Biljard.unity";
     const string VolumeProfilePath = "Assets/Settings/SampleSceneProfile.asset";
 
+    static Mesh pocketRimCorner, pocketRimSide;
+    static Material chromeMat;
+
     static readonly string[] OldAssets =
     {
         "Assets/Eight-ball Rack", "Assets/Materials", "Assets/Models", "Assets/TutorialInfo",
@@ -67,6 +70,8 @@ public static class BiljardSceneBuilder
         Material wrap = Lit("CueWrap", new Color(0.04f, 0.04f, 0.04f), 0.2f, null, Vector2.one);
         Material ferrule = Lit("CueFerrule", new Color(0.95f, 0.95f, 0.92f), 0.8f, null, Vector2.one);
         Material tip = Lit("CueTip", new Color(0.15f, 0.35f, 0.8f), 0.1f, null, Vector2.one);
+        Material chrome = Lit("Chrome", new Color(0.82f, 0.82f, 0.85f), 0.88f, null, Vector2.one);
+        chrome.SetFloat("_Metallic", 1f);
         Material aimMat = AimMaterial();
         Material ghostMat = GhostMaterial();
         var ballMats = new Material[16];
@@ -84,6 +89,10 @@ public static class BiljardSceneBuilder
         Mesh mShaft = Lathe("Cue_Shaft", -0.05f, 0.700f, 0.0128f, 0.0064f);
         Mesh mFerrule = Lathe("Cue_Ferrule", 0.700f, 0.718f, 0.0064f, 0.0064f);
         Mesh mTip = Lathe("Cue_Tip", 0.718f, 0.725f, 0.0062f, 0.0058f);
+
+        pocketRimCorner = Torus("Pocket_Rim_Corner", 0.13f / 2f + 0.006f, 0.009f);
+        pocketRimSide = Torus("Pocket_Rim_Side", 0.14f / 2f + 0.006f, 0.009f);
+        chromeMat = chrome;
 
         AssetDatabase.SaveAssets();
 
@@ -403,7 +412,26 @@ public static class BiljardSceneBuilder
         visual.transform.localPosition = new Vector3(pos.x, RailTop - height / 2f + 0.0025f, pos.z);
         visual.transform.localScale = new Vector3(diameter, height / 2f, diameter);
         visual.GetComponent<Renderer>().sharedMaterial = hole;
+        visual.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
         visual.isStatic = true;
+
+        // polished metal pocket rim (like on a real table / in 8 Ball Pool)
+        GameObject ring = new GameObject(name + " (obroč)");
+        ring.transform.SetParent(parent, false);
+        ring.transform.localPosition = new Vector3(pos.x, RailTop + 0.003f, pos.z);
+        ring.AddComponent<MeshFilter>().sharedMesh = diameter > 0.135f ? pocketRimSide : pocketRimCorner;
+        ring.AddComponent<MeshRenderer>().sharedMaterial = chromeMat;
+        ring.isStatic = true;
+
+        // deep pocket below the cloth so the hole looks deep from every angle
+        GameObject well = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        well.name = name + " (globina)";
+        Object.DestroyImmediate(well.GetComponent<Collider>());
+        well.transform.SetParent(parent, false);
+        well.transform.localPosition = new Vector3(pos.x, -0.12f, pos.z);
+        well.transform.localScale = new Vector3(diameter * 0.98f, 0.12f, diameter * 0.98f);
+        well.GetComponent<Renderer>().sharedMaterial = hole;
+        well.isStatic = true;
 
         // trigger that swallows the ball
         GameObject trigger = new GameObject(name + " trigger");
@@ -506,6 +534,43 @@ public static class BiljardSceneBuilder
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
 
+        string path = MeshDir + "/" + name + ".asset";
+        if (AssetDatabase.LoadAssetAtPath<Mesh>(path) != null) AssetDatabase.DeleteAsset(path);
+        AssetDatabase.CreateAsset(mesh, path);
+        return mesh;
+    }
+
+    /// <summary>Torus mesh used as a metal pocket rim.</summary>
+    static Mesh Torus(string name, float major, float minor, int segments = 48, int sides = 12)
+    {
+        var v = new List<Vector3>();
+        var uv = new List<Vector2>();
+        var t = new List<int>();
+        for (int i = 0; i <= segments; i++)
+        {
+            float u = i / (float)segments * Mathf.PI * 2f;
+            for (int j = 0; j <= sides; j++)
+            {
+                float a = j / (float)sides * Mathf.PI * 2f;
+                float rr = major + minor * Mathf.Cos(a);
+                v.Add(new Vector3(rr * Mathf.Cos(u), minor * Mathf.Sin(a), rr * Mathf.Sin(u)));
+                uv.Add(new Vector2(i / (float)segments, j / (float)sides));
+            }
+        }
+        int row = sides + 1;
+        for (int i = 0; i < segments; i++)
+        for (int j = 0; j < sides; j++)
+        {
+            int a = i * row + j, b = (i + 1) * row + j, c = a + 1, d = b + 1;
+            t.Add(a); t.Add(c); t.Add(b);   // clockwise when seen from outside (Unity front face)
+            t.Add(c); t.Add(d); t.Add(b);
+        }
+        var mesh = new Mesh { name = name };
+        mesh.SetVertices(v);
+        mesh.SetUVs(0, uv);
+        mesh.SetTriangles(t, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
         string path = MeshDir + "/" + name + ".asset";
         if (AssetDatabase.LoadAssetAtPath<Mesh>(path) != null) AssetDatabase.DeleteAsset(path);
         AssetDatabase.CreateAsset(mesh, path);

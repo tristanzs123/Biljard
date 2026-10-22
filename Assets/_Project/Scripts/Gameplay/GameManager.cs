@@ -61,6 +61,9 @@ namespace Billiards.Gameplay
         [Tooltip("Shot is evaluated only after this minimum time (s).")]
         [SerializeField] float minShotTime = 0.3f;
 
+        [Tooltip("Shot clock: seconds per turn, like in 8 Ball Pool. 0 = no limit.")]
+        [SerializeField, Range(0f, 90f)] float turnTimeLimit = 30f;
+
         [Tooltip("After this time (s) all balls are stopped and the shot is evaluated anyway.")]
         [SerializeField] float maxShotTime = 10f;
 
@@ -74,6 +77,12 @@ namespace Billiards.Gameplay
         public Progression Progress { get; private set; }
         public int CurrentStage { get; private set; } = -1;
         public GameReward LastReward { get; private set; }
+
+        /// <summary>Seconds left on the shot clock.</summary>
+        public float TurnTimeLeft { get; private set; }
+
+        /// <summary>Shot clock length (s).</summary>
+        public float TurnTimeLimit => turnTimeLimit;
 
         static int pendingStage = -1;
         float baseMaxSpeed;
@@ -241,6 +250,8 @@ namespace Billiards.Gameplay
             Keyboard kb = Keyboard.current;
             if (kb != null && kb.escapeKey.wasPressedThisFrame) TogglePause();
 
+            UpdateShotClock();
+
             switch (State)
             {
                 case GameState.BallsMoving:
@@ -262,8 +273,35 @@ namespace Billiards.Gameplay
 
         // ------------------------------------------------------------------ turns
 
+        void UpdateShotClock()
+        {
+            if (turnTimeLimit <= 0f || Rules == null) return;
+            bool humanTurn = State == GameState.PlayerAiming || State == GameState.BallInHand;
+            if ((humanTurn || State == GameState.AITurn) && !cue.IsShooting)
+            {
+                TurnTimeLeft = Mathf.Max(0f, TurnTimeLeft - Time.deltaTime);
+                if (humanTurn && TurnTimeLeft <= 0f) OnTimeout();
+            }
+        }
+
+        void OnTimeout()
+        {
+            cue.HumanControl = false;
+            cue.HideAimVisuals();
+            if (State == GameState.BallInHand)
+            {
+                Vector3 p = cueBall.transform.position;
+                cueBall.PlaceAt(BallInHandValid ? p : cueBall.SpawnPosition);
+            }
+            Stats[Rules.CurrentPlayer].fouls++;
+            ShotOutcome outcome = Rules.Timeout();
+            Message?.Invoke("ČAS JE POTEKEL - prekršek!");
+            BeginTurn();
+        }
+
         void BeginTurn()
         {
+            TurnTimeLeft = turnTimeLimit;
             bool aiTurn = Rules.CurrentPlayer == 1;
             if (Rules.BallInHand && !aiTurn)
             {

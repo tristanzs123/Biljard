@@ -110,6 +110,16 @@ namespace Billiards.Tests
         }
 
         [Test]
+        public void Timeout_GivesBallInHandToOpponent()
+        {
+            var rules = AfterLegalBreak();
+            Assert.AreEqual(ShotOutcomeType.Foul, rules.Timeout().Type);
+            Assert.AreEqual(1, rules.CurrentPlayer);
+            Assert.IsTrue(rules.BallInHand);
+            Assert.IsFalse(rules.BallInHandKitchenOnly);
+        }
+
+        [Test]
         public void EightBallWithScratch_Loses()
         {
             var rules = AfterLegalBreak();
