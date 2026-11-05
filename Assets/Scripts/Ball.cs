@@ -36,10 +36,16 @@ public class Ball : MonoBehaviour
     [Range(0.05f, 1f)] public float rollingDeceleration = 0.22f;
 
     [Tooltip("Speed-proportional drag (air/cloth).")]
-    [Range(0f, 1f)] public float linearDamping = 0.12f;
+    [Range(0f, 1f)] public float linearDamping = 0.1f;
 
     [Tooltip("How fast spin around the vertical axis (side spin) fades, 1/s.")]
-    [Range(0f, 5f)] public float spinDecay = 1.5f;
+    [Range(0f, 5f)] public float spinDecay = 0.6f;
+
+    [Tooltip("Sliding friction coefficient ball-cloth. Turns sliding into rolling and makes draw / follow work.")]
+    [Range(0.05f, 0.5f)] public float slidingFriction = 0.2f;
+
+    [Tooltip("Constant braking of side spin by the cloth (rad/s²).")]
+    [Range(0f, 30f)] public float sideSpinFriction = 6f;
 
     [Tooltip("Below this speed (m/s) the ball stops.")]
     [Range(0.001f, 0.05f)] public float stopSpeed = 0.01f;
@@ -57,9 +63,9 @@ public class Ball : MonoBehaviour
     {
         Body = GetComponent<Rigidbody>();
         Collider = GetComponent<SphereCollider>();
-        Body.maxAngularVelocity = 300f;
+        Body.maxAngularVelocity = 1000f;   // strong draw / follow needs > 300 rad/s
         Body.linearDamping = linearDamping;
-        Body.angularDamping = 0.05f;
+        Body.angularDamping = 0f;          // spin is handled by the cloth model below
         Body.solverIterations = 12;
         Body.solverVelocityIterations = 8;
         spawnPosition = transform.position;
@@ -131,32 +137,59 @@ public class Ball : MonoBehaviour
     }
 
     /// <summary>
-    /// PhysX has no rolling resistance. Sliding turns into rolling through cloth friction (PhysicsMaterial);
-    /// here we add the constant rolling resistance of the cloth so the ball decelerates evenly and stops cleanly.
+    /// Ball-cloth model like in 8 Ball Pool / real pool (the cloth PhysicsMaterial has zero friction,
+    /// everything happens here):
+    ///  - SLIDING: the contact point slips over the cloth. Kinetic friction slows the slip down and changes
+    ///    both the speed and the spin -> stun, draw (backspin) and follow (topspin) shots work naturally.
+    ///  - ROLLING: no slip, spin = speed / radius, only the small rolling resistance slows the ball.
+    ///  - Side spin (around the vertical axis) fades slowly and changes the angle off a cushion.
     /// </summary>
     void ApplyRollingResistance(float dt)
     {
         if (transform.position.y > Radius + 0.01f) return; // airborne
 
+        const float g = 9.81f;
         Vector3 v = Body.linearVelocity;
         Vector3 w = Body.angularVelocity;
-        float speed = Mathf.Sqrt(v.x * v.x + v.z * v.z);
-        if (speed > 0.0001f)
+        Vector3 vh = new Vector3(v.x, 0f, v.z);
+
+        // pool balls do not jump in 8 Ball Pool: no upward velocity while touching the cloth
+        float vy = Mathf.Min(v.y, 0f);
+
+        // velocity of the contact point (bottom of the ball): v + w x (-R * up)
+        Vector3 slip = vh + Vector3.Cross(w, Vector3.down * Radius);
+        slip.y = 0f;
+        float slipSpeed = slip.magnitude;
+
+        if (slipSpeed > 0.02f)
         {
-            float k = Mathf.Max(0f, speed - rollingDeceleration * dt) / speed;
-            Body.linearVelocity = new Vector3(v.x * k, v.y, v.z * k);
-            w = new Vector3(w.x * k, w.y, w.z * k);
+            // sliding: friction acts against the slip; the slip changes 3.5x faster than the speed alone
+            Vector3 dirSlip = slip / slipSpeed;
+            float dv = Mathf.Min(slidingFriction * g * dt, slipSpeed / 3.5f);
+            vh -= dirSlip * dv;
+            Vector3 dw = Vector3.Cross(Vector3.up, dirSlip) * (2.5f * dv / Radius);
+            w += new Vector3(dw.x, 0f, dw.z);
+        }
+        else
+        {
+            // rolling: constant rolling resistance, spin locked to the speed
+            float speed = vh.magnitude;
+            if (speed > 0f) vh *= Mathf.Max(0f, speed - rollingDeceleration * dt) / speed;
+            Vector3 roll = Vector3.Cross(Vector3.up, vh) / Radius;
+            w = new Vector3(roll.x, w.y, roll.z);
         }
 
         // side spin fades out
-        w.y *= Mathf.Max(0f, 1f - spinDecay * dt);
+        w.y = Mathf.MoveTowards(w.y * Mathf.Max(0f, 1f - spinDecay * dt), 0f, sideSpinFriction * dt);
 
-        // a ball spinning in place (e.g. after hitting a cushion) is braked by the cloth until it stops
-        if (speed < stopSpeed * 3f)
+        // a ball that stopped but still turns a little (numerical noise after a cushion) is stopped by the cloth
+        if (vh.magnitude < stopSpeed * 3f && slipSpeed <= 0.02f)
         {
             float mag = w.magnitude;
             if (mag > 0f) w *= Mathf.Max(0f, mag - spinBrake * dt) / mag;
         }
+
+        Body.linearVelocity = new Vector3(vh.x, vy, vh.z);
         Body.angularVelocity = w;
     }
 

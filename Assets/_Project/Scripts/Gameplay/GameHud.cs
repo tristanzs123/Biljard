@@ -1,6 +1,7 @@
 using Billiards.Core;
 using Billiards.Rules;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Billiards.Gameplay
 {
@@ -15,11 +16,12 @@ namespace Billiards.Gameplay
         [Tooltip("How long a banner message stays visible (s).")]
         [SerializeField, Range(0.5f, 5f)] float bannerTime = 2.2f;
 
-        enum MenuTab { Play, Shop }
+        enum MenuTab { Play, Shop, Settings }
 
         string banner = "";
         float bannerUntil;
         MenuTab tab = MenuTab.Play;
+        bool pauseSettings;
         GUIStyle title, big, button, normal, small, center, bannerStyle, coinStyle, ballNum;
         Texture2D white, disc;
 
@@ -34,6 +36,34 @@ namespace Billiards.Gameplay
 
         void OnEnable() { if (game != null) game.Message += ShowBanner; }
         void OnDisable() { if (game != null) game.Message -= ShowBanner; }
+
+        Rect spinPanel, spinBall;
+        bool draggingSpin;
+
+        /// <summary>Spin widget input: click / drag on the panel moves the tip, right click centres it.</summary>
+        void Update()
+        {
+            Mouse mouse = Mouse.current;
+            CueController cue = game != null ? game.Cue : null;
+            if (mouse == null || cue == null || spinBall.width <= 0f ||
+                game.State != GameState.PlayerAiming || !cue.HumanControl || cue.IsCharging)
+            {
+                draggingSpin = false;
+                return;
+            }
+
+            Vector2 screen = mouse.position.ReadValue();
+            Vector2 gui = new Vector2(screen.x, Screen.height - screen.y);
+            bool pressedHere = mouse.leftButton.wasPressedThisFrame && spinPanel.Contains(gui);
+            if (pressedHere || draggingSpin)
+            {
+                Vector2 d = (gui - spinBall.center) / (spinBall.width * 0.4f);
+                cue.Spin = new Vector2(d.x, -d.y);
+            }
+            // a very short click can press and release within one frame: it still sets the spin above
+            draggingSpin = (pressedHere || draggingSpin) && mouse.leftButton.isPressed;
+            if (mouse.rightButton.wasPressedThisFrame && spinPanel.Contains(gui)) cue.Spin = Vector2.zero;
+        }
 
         void ShowBanner(string text)
         {
@@ -65,10 +95,15 @@ namespace Billiards.Gameplay
 
         int Px(float v) => Mathf.Max(10, Mathf.RoundToInt(v * s));
 
+        /// <summary>The screen is big enough for secondary text (hints).</summary>
+        bool LargeUi => s >= 0.6f;
+
         void OnGUI()
         {
             if (game == null || game.Progress == null) return;
+            GameSettings.EnsureLoaded();
             EnsureStyles();
+            if (Event.current.type == EventType.Layout) CueController.UiBlockers.Clear();
 
             switch (game.State)
             {
@@ -125,12 +160,14 @@ namespace Billiards.Gameplay
             DrawProfileBar(Px(20));
             GUI.Label(new Rect(0, Px(90), Screen.width, Px(100)), "BILJARD <color=#ffd54a>8-BALL</color>", title);
 
-            float tw = Px(240), th = Px(56), tx = Screen.width * 0.5f - tw - Px(8), ty = Px(200);
+            float tw = Px(240), th = Px(56), tx = Screen.width * 0.5f - 1.5f * tw - Px(16), ty = Px(200);
             if (GUI.Toggle(new Rect(tx, ty, tw, th), tab == MenuTab.Play, "Igraj", big)) tab = MenuTab.Play;
             if (GUI.Toggle(new Rect(tx + tw + Px(16), ty, tw, th), tab == MenuTab.Shop, "Trgovina", big)) tab = MenuTab.Shop;
+            if (GUI.Toggle(new Rect(tx + 2f * (tw + Px(16)), ty, tw, th), tab == MenuTab.Settings, "Nastavitve", big)) tab = MenuTab.Settings;
 
             if (tab == MenuTab.Play) DrawStages(ty + th + Px(30));
-            else DrawShop(ty + th + Px(30));
+            else if (tab == MenuTab.Shop) DrawShop(ty + th + Px(30));
+            else DrawSettings(ty + th + Px(30));
 
             Progression p = game.Progress;
             float bw = Px(360), by = Screen.height - Px(150);
@@ -145,7 +182,7 @@ namespace Billiards.Gameplay
             if (GUI.Button(new Rect(Screen.width * 0.5f + Px(10), by, bw, Px(60)), "Izhod", button)) Quit();
 
             GUI.Label(new Rect(0, Screen.height - Px(70), Screen.width, Px(60)),
-                "Miška: meri  |  drži levi gumb in povleci nazaj: moč  |  Shift: natančno  |  desni gumb: prekliči  |  C: pogled  |  kolešček: zoom  |  Esc: pavza",
+                "Miška / puščice: meri  |  drži levi gumb in povleci nazaj: moč  |  Shift: natančno  |  krogla spodaj desno: učinek (spin)  |  C: pogled  |  Esc: pavza",
                 new GUIStyle(small) { alignment = TextAnchor.MiddleCenter });
 
             DrawMenuBanner();
@@ -286,6 +323,7 @@ namespace Billiards.Gameplay
                 GUI.Label(new Rect(0, Px(112), Screen.width, Px(40)), status, center);
 
             CueController cue = game.Cue;
+            if (cue != null && game.State == GameState.PlayerAiming && cue.HumanControl) DrawSpinWidget(cue);
             if (cue != null && cue.IsCharging)
             {
                 float p = cue.CurrentPower;
@@ -401,10 +439,18 @@ namespace Billiards.Gameplay
         void DrawPause()
         {
             Shade(new Rect(0, 0, Screen.width, Screen.height), 0.6f);
+            if (pauseSettings)
+            {
+                GUI.Label(new Rect(0, Px(60), Screen.width, Px(100)), "NASTAVITVE", title);
+                DrawSettings(Px(190));
+                if (GUI.Button(new Rect((Screen.width - Px(380)) * 0.5f, Screen.height - Px(110), Px(380), Px(70)), "Nazaj", big)) pauseSettings = false;
+                return;
+            }
             GUI.Label(new Rect(0, Screen.height * 0.2f, Screen.width, Px(100)), "PAVZA", title);
             float w = Px(380), h = Px(70), x = (Screen.width - w) * 0.5f, y = Screen.height * 0.4f;
             if (GUI.Button(new Rect(x, y, w, h), "Nadaljuj", big)) game.TogglePause();
-            if (GUI.Button(new Rect(x, y + h + Px(14), w, h), "Predaj in v meni", big)) game.Restart();
+            if (GUI.Button(new Rect(x, y + h + Px(14), w, h), "Nastavitve", big)) pauseSettings = true;
+            if (GUI.Button(new Rect(x, y + 2f * (h + Px(14)), w, h), "Predaj in v meni", big)) { pauseSettings = false; game.Restart(); }
         }
 
         void DrawGameOver()
@@ -440,6 +486,86 @@ namespace Billiards.Gameplay
             if (GUI.Button(new Rect(Screen.width * 0.5f - bw - Px(10), by, bw, bh), st != null && st.entryFee > 0 ? $"Igraj znova ({st.entryFee:N0})" : "Igraj znova", big)) game.PlayAgain();
             GUI.enabled = true;
             if (GUI.Button(new Rect(Screen.width * 0.5f + Px(10), by, bw, bh), "Glavni meni", big)) game.Restart();
+        }
+
+        // ------------------------------------------------------------------ spin widget (8 Ball Pool style)
+
+        /// <summary>Cue ball in the corner: click / drag on it to choose where the tip hits (top, back, side spin).</summary>
+        void DrawSpinWidget(CueController cue)
+        {
+            float size = Px(150);
+            Rect panel = new Rect(Screen.width - size - Px(40), Screen.height - size - Px(80), size + Px(20), size + Px(60));
+            Rect ballRect = new Rect(panel.x + Px(10), panel.y + Px(10), size, size);
+            if (Event.current.type == EventType.Layout) CueController.UiBlockers.Add(panel);
+
+            Shade(panel, 0.45f);
+            DrawDisc(new Rect(ballRect.x + Px(4), ballRect.y + Px(6), size, size), new Color(0f, 0f, 0f, 0.35f));
+            DrawDisc(ballRect, new Color(0.97f, 0.96f, 0.92f));
+            Vector2 c = ballRect.center;
+            float r = size * 0.5f;
+            Fill(new Rect(c.x - r * 0.8f, c.y - 0.5f, r * 1.6f, 1f), new Color(0f, 0f, 0f, 0.25f));
+            Fill(new Rect(c.x - 0.5f, c.y - r * 0.8f, 1f, r * 1.6f), new Color(0f, 0f, 0f, 0.25f));
+
+            // the input itself is read in Update (Input System), IMGUI gets no mouse events during play
+            spinPanel = panel;
+            spinBall = ballRect;
+
+            Vector2 sp = cue.Spin;
+            Vector2 dot = c + new Vector2(sp.x, -sp.y) * (r * 0.8f);
+            float dr = Px(22);
+            DrawDisc(new Rect(dot.x - dr * 0.5f - Px(2), dot.y - dr * 0.5f - Px(2), dr + Px(4), dr + Px(4)), Color.white);
+            DrawDisc(new Rect(dot.x - dr * 0.5f, dot.y - dr * 0.5f, dr, dr), new Color(0.9f, 0.12f, 0.1f));
+
+            string label = sp.sqrMagnitude < 0.0025f ? "Učinek: sredina" :
+                (sp.y > 0.2f ? "naprej " : sp.y < -0.2f ? "nazaj " : "") + (sp.x > 0.2f ? "desno" : sp.x < -0.2f ? "levo" : "");
+            if (label != "Učinek: sredina") label = "Učinek: " + label;
+            GUI.Label(new Rect(panel.x, ballRect.yMax + Px(6), panel.width, Mathf.Max(Px(24), 16)), label, new GUIStyle(small) { alignment = TextAnchor.MiddleCenter, fontSize = Px(17) });
+            if (LargeUi) // at small resolutions the minimum font size would make the two lines overlap
+                GUI.Label(new Rect(panel.x, ballRect.yMax + Px(26), panel.width, Px(22)), "desni klik = sredina", new GUIStyle(small) { alignment = TextAnchor.MiddleCenter, fontSize = Px(13) });
+        }
+
+        // ------------------------------------------------------------------ settings
+
+        void DrawSettings(float y)
+        {
+            float w = Mathf.Min(Px(900), Screen.width - Px(40)), x = (Screen.width - w) * 0.5f;
+            float rowH = Px(62);
+            Rect panel = new Rect(x, y, w, rowH * 8 + Px(30));
+            Fill(panel, new Color(0.08f, 0.08f, 0.1f, 0.92f));
+            float ry = y + Px(15);
+
+            EditorlessSlider(ref ry, x, w, "Občutljivost merjenja (miška)", ref GameSettings.AimSensitivity, 0.1f, 2f, "x{0:0.00}",
+                "1.00 = palica kaže točno na miško, manj = počasnejše in natančnejše");
+            EditorlessSlider(ref ry, x, w, "Natančno merjenje (Shift)", ref GameSettings.FineAimSensitivity, 0.02f, 0.5f, "x{0:0.00}",
+                "kako počasi se palica vrti, ko držiš Shift");
+            EditorlessSlider(ref ry, x, w, "Hitrost merjenja s puščicami / A-D", ref GameSettings.KeyboardAimSpeed, 0.1f, 3f, "x{0:0.00}", "");
+            EditorlessSlider(ref ry, x, w, "Občutljivost moči", ref GameSettings.PowerSensitivity, 0.4f, 2.5f, "x{0:0.00}",
+                "več = za polno moč potrebuješ krajši poteg miške");
+            EditorlessSlider(ref ry, x, w, "Dolžina pomožne črte", ref GameSettings.AimLineLength, 0f, 2f, "x{0:0.00}", "");
+            float vol = GameSettings.Volume * 100f;
+            EditorlessSlider(ref ry, x, w, "Glasnost", ref vol, 0f, 100f, "{0:0} %", "");
+            if (!Mathf.Approximately(vol, GameSettings.Volume * 100f)) { GameSettings.Volume = vol / 100f; GameSettings.Save(); }
+
+            bool guide = GUI.Toggle(new Rect(x + Px(30), ry + Px(10), w * 0.5f, Px(36)), GameSettings.ShowGuide, "  Pomožne črte za merjenje", new GUIStyle(GUI.skin.toggle) { fontSize = Px(22) });
+            if (guide != GameSettings.ShowGuide) { GameSettings.ShowGuide = guide; GameSettings.Save(); }
+            if (GUI.Button(new Rect(x + w - Px(330), ry + Px(6), Px(300), Px(46)), "Privzete nastavitve", button)) GameSettings.ResetToDefaults();
+        }
+
+        /// <summary>One labelled slider row; saves the settings when the value changes.</summary>
+        void EditorlessSlider(ref float y, float x, float w, string label, ref float value, float min, float max, string format, string hint)
+        {
+            float labelH = Mathf.Max(Px(32), 18);
+            GUI.Label(new Rect(x + Px(30), y, w * 0.5f, labelH), $"<b>{label}</b>", new GUIStyle(normal) { wordWrap = false, clipping = TextClipping.Overflow });
+            if (hint.Length > 0 && LargeUi) GUI.Label(new Rect(x + Px(30), y + Px(28), w * 0.5f, Px(26)), hint, new GUIStyle(small) { fontSize = Px(14), wordWrap = false });
+            Rect slider = new Rect(x + w * 0.52f, y + Px(14), w * 0.32f, Px(24));
+            float v = GUI.HorizontalSlider(slider, value, min, max);
+            GUI.Label(new Rect(slider.xMax + Px(16), y + Px(4), w * 0.14f, labelH), string.Format(format, v), new GUIStyle(normal) { wordWrap = false });
+            if (!Mathf.Approximately(v, value))
+            {
+                value = v;
+                GameSettings.Save();
+            }
+            y += Px(62);
         }
 
         // ------------------------------------------------------------------ helpers

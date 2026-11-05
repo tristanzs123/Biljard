@@ -6,7 +6,7 @@ Narejeno na praksi (tehnik računalništva, ERŠ Ptuj).
 ## Kako zagnati
 1. Unity Hub → **Add → Add project from disk** → izberi to mapo.
 2. Odpri z **Unity 6000.3.26f1** (URP).
-3. Odpri sceno `Assets/Scenes/Biljard.unity` in pritisni **Play**.
+3. Odpri sceno `Assets/_Project/Scenes/Biljard.unity` in pritisni **Play**.
 4. Če scena manjka ali je pokvarjena: meni **Biljard → Zgradi sceno**.
 
 ## Kontrole
@@ -20,6 +20,10 @@ Narejeno na praksi (tehnik računalništva, ERŠ Ptuj).
 | Pogled (poševno / od zgoraj) | **C** |
 | Zoom | kolešček |
 | Pavza | **Esc** |
+| Dodatno merjenje | puščice levo/desno ali **A/D** |
+| Učinek (spin) | klik na belo kroglo spodaj desno, desni klik = sredina |
+
+Občutljivost merjenja, natančnega merjenja, puščic in moči, dolžina pomožne črte in glasnost se nastavijo v meniju **Nastavitve** (tudi med pavzo).
 
 ## Pravila (WPA, poenostavljeno)
 - 1–7 polne, 9–15 črtaste, 8 črna. V trikotniku je 8 v sredini, v zadnjih kotih ena polna in ena črtasta.
@@ -44,11 +48,11 @@ Assets/Scripts/Editor/            BiljardSceneBuilder (meni Biljard → Zgradi s
 - Težavnosti (Lahka, Srednja, Težka, Profesionalna) so v `Assets/_Project/ScriptableObjects/AI`: napaka kota (Gauss), napaka moči, pozicijska igra, safety, verjetnost slabe odločitve.
 
 ## Fizika
-- Realne mere: miza 9 ft (2.54 × 1.27 m), krogla Ø 57.15 mm, 0.17 kg, ust kotne luknje ~0.113 m, srednje ~0.13 m.
+- Realne mere: miza 9 ft (2.54 × 1.27 m), krogla Ø 57.15 mm, 0.17 kg, ust kotne luknje 12.7 cm, srednje 13.6 cm, koti čeljusti 142° (kotna) in 104° (srednja) po WPA.
 - Fixed Timestep 0.005 s (200 Hz): krogla s 8.5 m/s se v enem koraku premakne le ~4 cm, zato so trki natančni.
 - Rigidbody: Interpolate, Continuous Dynamic, 12 solver / 8 velocity iteracij.
-- Drsenje → kotaljenje prek trenja s suknom (PhysicsMaterial), kotalni upor sukna kot lastna sila v `Ball.FixedUpdate`, pod 0.01 m/s se krogla ustavi.
-- Blazine imajo zaobljene robove ob luknjah (jaws), da krogle ne obtičijo.
+- Model sukna v `Ball.cs`: drsenje → kotaljenje prek trenja, zato delujejo stun, draw, follow in stranski spin; kotalni upor je lastna sila, pod 0.01 m/s se krogla ustavi.
+- Blazine so konveksne prizme s poševnimi čeljustmi ob luknjah, robovi mize imajo okrogle izreze za luknje.
 
 ## Unit testi
 Window → General → **Test Runner** → EditMode → Run All.

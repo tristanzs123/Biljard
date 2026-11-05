@@ -10,7 +10,7 @@ using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Menu "Biljard > Zgradi sceno": builds the whole game from scratch (no external assets):
-/// 9-ft table with cushions, rounded jaws, pockets and diamonds, 16 numbered balls, a lathe-modelled cue,
+/// 9-ft table with angled-jaw cushions (WPA 142°/104°), rails with round pocket cut-outs, chrome pocket plates, diamonds, 16 numbered balls, a lathe-modelled cue,
 /// lights, camera, aim assist, GameManager, AI and HUD. Everything is saved under Assets/_Project.
 /// All sizes in metres (1 unit = 1 m).
 /// </summary>
@@ -21,12 +21,20 @@ public static class BiljardSceneBuilder
     const float W = 1.27f;          // width (Z)
     const float R = 0.028575f;      // ball radius (57.15 mm)
 
-    const float CushionT = 0.05f;   // cushion depth
-    const float CushionH = 0.045f;  // cushion height (nose at ~ball centre height)
-    const float RailW = 0.12f;      // wooden rail width
-    const float RailTop = 0.05f;    // rail top height
-    const float CornerGap = 0.08f;  // corner pocket opening along the cushion -> mouth ~0.113 m
-    const float SideGap = 0.065f;   // half of the side pocket opening -> mouth 0.13 m
+    const float CushionT = 0.05f;      // cushion depth
+    const float CushionNoseH = 0.037f; // cushion nose height (~64 % of the ball diameter, like a real K-66 profile)
+    const float CushionBackH = 0.046f; // cushion top at the rail (the top slopes up to the rail)
+    const float RailW = 0.12f;         // wooden rail width
+    const float RailTop = 0.05f;       // rail top height
+    const float RailBottom = -0.045f;  // rail bottom (apron)
+    const float CornerGap = 0.09f;     // corner: cushion nose ends 9 cm from the corner -> mouth 12.7 cm (5")
+    const float SideGap = 0.068f;      // side: half of the mouth -> mouth 13.6 cm (5.4")
+    const float CornerJawAngle = 142f; // angle between cushion nose and jaw face (WPA: 142° corner)
+    const float SideJawAngle = 104f;   // side pocket jaw angle (WPA: 104°)
+    const float CornerHoleR = 0.068f;  // radius of the pocket hole
+    const float SideHoleR = 0.066f;
+    static readonly Vector2 CornerHoleOffset = new Vector2(0.035f, 0.035f); // hole centre behind the corner
+    const float SideHoleOffset = 0.05f;
 
     const string Root = "Assets/_Project";
     const string TexDir = Root + "/Textures";
@@ -39,7 +47,6 @@ public static class BiljardSceneBuilder
     const string ScenePath = SceneDir + "/Biljard.unity";
     const string VolumeProfilePath = "Assets/Settings/SampleSceneProfile.asset";
 
-    static Mesh pocketRimCorner, pocketRimSide;
     static Material chromeMat;
 
     static readonly string[] OldAssets =
@@ -70,7 +77,7 @@ public static class BiljardSceneBuilder
         Material wrap = Lit("CueWrap", new Color(0.04f, 0.04f, 0.04f), 0.2f, null, Vector2.one);
         Material ferrule = Lit("CueFerrule", new Color(0.95f, 0.95f, 0.92f), 0.8f, null, Vector2.one);
         Material tip = Lit("CueTip", new Color(0.15f, 0.35f, 0.8f), 0.1f, null, Vector2.one);
-        Material chrome = Lit("Chrome", new Color(0.82f, 0.82f, 0.85f), 0.88f, null, Vector2.one);
+        Material chrome = Lit("Chrome", new Color(0.82f, 0.82f, 0.85f), 0.55f, null, Vector2.one); // not too glossy: no bloom flash from the lamp
         chrome.SetFloat("_Metallic", 1f);
         Material aimMat = AimMaterial();
         Material ghostMat = GhostMaterial();
@@ -79,7 +86,10 @@ public static class BiljardSceneBuilder
 
         // ---- physics materials (bounce multiplies, friction averages) ----
         PhysicsMaterial ballPM = PhysMaterial("Ball", 0.06f, 0.965f);      // ball-ball: 0.965² ≈ 0.93
-        PhysicsMaterial feltPM = PhysMaterial("Felt", 0.4f, 0.0f);
+        // cloth: NO PhysX friction (Minimum combine -> 0). Sliding/rolling/spin is simulated in Ball.cs
+        PhysicsMaterial feltPM = PhysMaterial("Felt", 0f, 0.0f);
+        feltPM.frictionCombine = PhysicsMaterialCombine.Minimum;
+        EditorUtility.SetDirty(feltPM);
         PhysicsMaterial cushionPM = PhysMaterial("Cushion", 0.2f, 0.81f); // ball-cushion: 0.965·0.81 ≈ 0.78
         PhysicsMaterial woodPM = PhysMaterial("Wood", 0.3f, 0.5f);
 
@@ -90,8 +100,6 @@ public static class BiljardSceneBuilder
         Mesh mFerrule = Lathe("Cue_Ferrule", 0.700f, 0.718f, 0.0064f, 0.0064f);
         Mesh mTip = Lathe("Cue_Tip", 0.718f, 0.725f, 0.0062f, 0.0058f);
 
-        pocketRimCorner = Torus("Pocket_Rim_Corner", 0.13f / 2f + 0.006f, 0.009f);
-        pocketRimSide = Torus("Pocket_Rim_Side", 0.14f / 2f + 0.006f, 0.009f);
         chromeMat = chrome;
 
         AssetDatabase.SaveAssets();
@@ -219,6 +227,7 @@ public static class BiljardSceneBuilder
         GameManager gm = gameGO.AddComponent<GameManager>();
         gameGO.AddComponent<Billiards.Core.Progression>();
         GameHud hud = gameGO.AddComponent<GameHud>();
+        gameGO.AddComponent<AudioManager>();
 
         var aiSo = new SerializedObject(ai);
         aiSo.FindProperty("cue").objectReferenceValue = controller;
@@ -265,6 +274,8 @@ public static class BiljardSceneBuilder
             b.linearDamping = defaults.linearDamping;
             b.spinDecay = defaults.spinDecay;
             b.stopSpeed = defaults.stopSpeed;
+            b.slidingFriction = defaults.slidingFriction;
+            b.sideSpinFriction = defaults.sideSpinFriction;
             EditorUtility.SetDirty(b);
             count++;
         }
@@ -284,45 +295,58 @@ public static class BiljardSceneBuilder
         GameObject table = new GameObject("BiljardnaMiza");
         Transform root = table.transform;
 
-        // slate with cloth (top at y = 0)
+        // slate with cloth (top at y = 0), reaches under the cushions up to the rail
         Box("Sukno", root, new Vector3(0f, -0.02f, 0f), new Vector3(L + 2f * CushionT, 0.04f, W + 2f * CushionT), felt, feltPM, true);
 
-        // cushions: 6 pieces with rounded ends at the pockets ("jaws") so balls never stick on sharp corners
-        float cy = CushionH / 2f;
-        float bandZ = W / 2f + CushionT / 2f;
-        float bandX = L / 2f + CushionT / 2f;
-        float r = CushionT / 2f;
+        // ---- pocket hole centres
+        var holes = new List<Vector3>(); // x, z, radius
         foreach (float sx in new[] { -1f, 1f })
         foreach (float sz in new[] { -1f, 1f })
+            holes.Add(new Vector3(sx * (L / 2f + CornerHoleOffset.x), sz * (W / 2f + CornerHoleOffset.y), CornerHoleR));
+        foreach (float sz in new[] { -1f, 1f })
+            holes.Add(new Vector3(0f, sz * (W / 2f + SideHoleOffset), SideHoleR));
+
+        // ---- cushions: 6 convex prisms with angled jaws (corner 142°, side 104°) like a real table / 8 Ball Pool
+        float cornerBack = CushionT * Mathf.Tan((CornerJawAngle - 90f) * Mathf.Deg2Rad); // jaw face leans towards the pocket
+        float sideBack = CushionT * Mathf.Tan((SideJawAngle - 90f) * Mathf.Deg2Rad);
+        int c = 0;
+        foreach (float sz in new[] { -1f, 1f })
+        foreach (float sx in new[] { -1f, 1f })
         {
-            float a = SideGap + r;
-            float b = L / 2f - CornerGap - r;
-            Box("Blazina", root, new Vector3(sx * (a + b) / 2f, cy, sz * bandZ), new Vector3(b - a, CushionH, CushionT), cushion, cushionPM, true)
-                .AddComponent<Cushion>();
-            Jaw(root, new Vector3(sx * a, cy, sz * bandZ), cushion, cushionPM);
-            Jaw(root, new Vector3(sx * b, cy, sz * bandZ), cushion, cushionPM);
+            // long cushion from the side pocket to the corner pocket (in "local" coords: x along, z outwards)
+            float x0 = SideGap, x1 = L / 2f - CornerGap;
+            Vector2[] poly =
+            {
+                new Vector2(sx * x0, sz * (W / 2f)),
+                new Vector2(sx * x1, sz * (W / 2f)),
+                new Vector2(sx * (x1 + cornerBack), sz * (W / 2f + CushionT)),
+                new Vector2(sx * (x0 - sideBack), sz * (W / 2f + CushionT))
+            };
+            CushionPiece("Blazina " + ++c, root, poly, cushion, cushionPM);
         }
         foreach (float sx in new[] { -1f, 1f })
         {
-            float e = W / 2f - CornerGap - r;
-            Box("Blazina", root, new Vector3(sx * bandX, cy, 0f), new Vector3(CushionT, CushionH, 2f * e), cushion, cushionPM, true)
-                .AddComponent<Cushion>();
-            Jaw(root, new Vector3(sx * bandX, cy, e), cushion, cushionPM);
-            Jaw(root, new Vector3(sx * bandX, cy, -e), cushion, cushionPM);
+            float z1 = W / 2f - CornerGap;
+            Vector2[] poly =
+            {
+                new Vector2(sx * (L / 2f), -z1),
+                new Vector2(sx * (L / 2f), z1),
+                new Vector2(sx * (L / 2f + CushionT), z1 + cornerBack),
+                new Vector2(sx * (L / 2f + CushionT), -(z1 + cornerBack))
+            };
+            CushionPiece("Blazina " + ++c, root, poly, cushion, cushionPM);
         }
 
-        // wooden rails
-        float railH = RailTop + 0.04f;
-        float railY = RailTop - railH / 2f;
-        float railZ = W / 2f + CushionT + RailW / 2f;
-        float railX = L / 2f + CushionT + RailW / 2f;
+        // ---- wooden rails with round pocket cut-outs
         foreach (float s in new[] { -1f, 1f })
         {
-            Box("Rob", root, new Vector3(0f, railY, s * railZ), new Vector3(L + 2f * (CushionT + RailW), railH, RailW), wood, woodPM, true);
-            Box("Rob", root, new Vector3(s * railX, railY, 0f), new Vector3(RailW, railH, W + 2f * CushionT), wood, woodPM, true);
+            RailStrip("Rob dolg " + (s > 0 ? "zgoraj" : "spodaj"), root, true, s, holes, wood, pocketMat, woodPM);
+            RailStrip("Rob kratek " + (s > 0 ? "desno" : "levo"), root, false, s, holes, wood, pocketMat, woodPM);
         }
 
         // diamonds (sights)
+        float railZ = W / 2f + CushionT + RailW / 2f;
+        float railX = L / 2f + CushionT + RailW / 2f;
         for (int k = 1; k <= 7; k++)
         {
             if (k == 4) continue;
@@ -336,18 +360,14 @@ public static class BiljardSceneBuilder
         }
 
         // body and legs
-        Box("Ohišje", root, new Vector3(0f, -0.13f, 0f), new Vector3(L + 2f * (CushionT + RailW) - 0.02f, 0.18f, W + 2f * (CushionT + RailW) - 0.02f), woodDark, woodPM, true);
+        Box("Ohišje", root, new Vector3(0f, -0.13f, 0f), new Vector3(L + 2f * (CushionT + RailW) - 0.02f, 0.17f, W + 2f * (CushionT + RailW) - 0.02f), woodDark, woodPM, true);
         foreach (float sx in new[] { -1f, 1f })
         foreach (float sz in new[] { -1f, 1f })
             Box("Noga", root, new Vector3(sx * 1.15f, -0.5f, sz * 0.52f), new Vector3(0.14f, 0.6f, 0.14f), woodDark, woodPM, true);
 
-        // pockets: 4 corners + 2 sides
-        int n = 1;
-        foreach (float sx in new[] { -1f, 1f })
-        foreach (float sz in new[] { -1f, 1f })
-            PocketAt("Luknja " + n++, root, new Vector3(sx * (L / 2f + 0.02f), 0f, sz * (W / 2f + 0.02f)), 0.13f, pocketMat, leather);
-        foreach (float sz in new[] { -1f, 1f })
-            PocketAt("Luknja " + n++, root, new Vector3(0f, 0f, sz * (W / 2f + 0.035f)), 0.14f, pocketMat, leather);
+        // pockets
+        for (int i = 0; i < holes.Count; i++)
+            PocketAt("Luknja " + (i + 1), root, holes[i], pocketMat, i < 4 ? 0.045f : 0.04f);
 
         return table;
     }
@@ -366,17 +386,126 @@ public static class BiljardSceneBuilder
         return go;
     }
 
-    /// <summary>Rounded cushion end (vertical cylinder) at a pocket mouth.</summary>
-    static void Jaw(Transform parent, Vector3 center, Material mat, PhysicsMaterial pm)
+    /// <summary>
+    /// One cushion: a convex prism over a quad in the XZ plane (nose0, nose1, back1, back0).
+    /// The top slopes from the nose (CushionNoseH) up to the rail (CushionBackH). Convex MeshCollider.
+    /// </summary>
+    static void CushionPiece(string name, Transform parent, Vector2[] poly, Material mat, PhysicsMaterial pm)
     {
-        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        go.name = "Blazina (rob ob luknji)";
+        float[] top = { CushionNoseH, CushionNoseH, CushionBackH, CushionBackH };
+        var b = new MeshBuilder();
+        Vector3 centre = Vector3.zero;
+        for (int i = 0; i < 4; i++) centre += new Vector3(poly[i].x, 0f, poly[i].y) * 0.25f;
+
+        // top (two triangles), bottom
+        Vector3[] t = new Vector3[4], d = new Vector3[4];
+        for (int i = 0; i < 4; i++)
+        {
+            t[i] = new Vector3(poly[i].x, top[i], poly[i].y);
+            d[i] = new Vector3(poly[i].x, 0f, poly[i].y);
+        }
+        b.Quad(t[0], t[1], t[2], t[3], Vector3.up, 4f);
+        b.Quad(d[0], d[1], d[2], d[3], Vector3.down, 4f);
+        // sides (nose, jaws, back)
+        for (int i = 0; i < 4; i++)
+        {
+            int j = (i + 1) % 4;
+            Vector3 mid = (d[i] + d[j]) * 0.5f;
+            Vector3 outward = mid - centre;
+            outward.y = 0f;
+            // shading normal leans upward (rounded rubber profile), so the nose catches the lamp and is not a black line
+            b.Quad(d[i], d[j], t[j], t[i], (outward.normalized + Vector3.up).normalized, 4f);
+        }
+
+        Mesh mesh = b.Save("Cushion_" + name.Replace(' ', '_'));
+        GameObject go = new GameObject(name);
         go.transform.SetParent(parent, false);
-        go.transform.localPosition = center;
-        go.transform.localScale = new Vector3(CushionT, CushionH / 2f, CushionT);
-        go.GetComponent<Renderer>().sharedMaterial = mat;
-        go.GetComponent<Collider>().sharedMaterial = pm;
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+        MeshCollider mc = go.AddComponent<MeshCollider>();
+        mc.sharedMesh = mesh;
+        mc.convex = true;
+        mc.sharedMaterial = pm;
         go.AddComponent<Cushion>();
+        go.isStatic = true;
+    }
+
+    /// <summary>
+    /// Wooden rail along one side, built as a strip of samples so the pocket holes can be cut out as true circles.
+    /// Long rails cover the corners; short rails fit between them. The walls of the cut-outs are black (pocket).
+    /// </summary>
+    static void RailStrip(string name, Transform parent, bool longSide, float sign, List<Vector3> holes,
+                          Material wood, Material hole, PhysicsMaterial pm)
+    {
+        float inner0 = longSide ? W / 2f + CushionT : L / 2f + CushionT;   // distance of the inner edge from the centre
+        float outer = inner0 + RailW;
+        float extent = longSide ? L / 2f + CushionT + RailW : W / 2f + CushionT;
+        int samples = Mathf.CeilToInt(2f * extent / 0.004f);
+        const float bevel = 0.012f;
+
+        // sample (t along the rail, d = distance from the table centre line)
+        Vector3 ToWorld(float t, float d, float y) => longSide ? new Vector3(t, y, sign * d) : new Vector3(sign * d, y, t);
+        Vector3 DirToWorld(float dt, float dd) => longSide ? new Vector3(dt, 0f, sign * dd) : new Vector3(sign * dd, 0f, dt);
+
+        float InnerAt(float t)
+        {
+            float d = inner0;
+            foreach (Vector3 h in holes)
+            {
+                float ht = longSide ? h.x : h.y;
+                float hd = (longSide ? h.y : h.x) * sign;
+                if (hd < 0f) continue;
+                float dt = t - ht;
+                if (Mathf.Abs(dt) >= h.z) continue;
+                d = Mathf.Max(d, hd + Mathf.Sqrt(h.z * h.z - dt * dt));
+            }
+            return Mathf.Min(d, outer - bevel - 0.004f);
+        }
+
+        // grain runs along the rail on every side (the texture's stripes follow U)
+        var woodB = new MeshBuilder
+        {
+            UvMap = p => longSide ? new Vector2(p.x * 0.25f, (p.z + p.y) * 2f) : new Vector2(p.z * 0.25f, (p.x + p.y) * 2f)
+        };
+        var holeB = new MeshBuilder();
+        float prevT = -extent, prevD = InnerAt(prevT);
+        for (int i = 1; i <= samples; i++)
+        {
+            float t = Mathf.Lerp(-extent, extent, i / (float)samples);
+            float d = InnerAt(t);
+
+            // top
+            woodB.Quad(ToWorld(prevT, prevD, RailTop), ToWorld(t, d, RailTop), ToWorld(t, outer - bevel, RailTop), ToWorld(prevT, outer - bevel, RailTop), Vector3.up, 2f);
+            // rounded (bevelled) outer edge and outer face
+            Vector3 bevelN = (Vector3.up + DirToWorld(0f, 1f)).normalized;
+            woodB.Quad(ToWorld(prevT, outer - bevel, RailTop), ToWorld(t, outer - bevel, RailTop), ToWorld(t, outer, RailTop - bevel), ToWorld(prevT, outer, RailTop - bevel), bevelN, 2f);
+            woodB.Quad(ToWorld(prevT, outer, RailTop - bevel), ToWorld(t, outer, RailTop - bevel), ToWorld(t, outer, RailBottom), ToWorld(prevT, outer, RailBottom), DirToWorld(0f, 1f), 2f);
+
+            // inner wall: towards the table, or into the pocket hole
+            Vector3 n = DirToWorld(d - prevD, -(t - prevT)).normalized;
+            bool cut = prevD > inner0 + 1e-4f || d > inner0 + 1e-4f;
+            (cut ? holeB : woodB).Quad(ToWorld(prevT, prevD, RailTop), ToWorld(t, d, RailTop), ToWorld(t, d, RailBottom), ToWorld(prevT, prevD, RailBottom), n, 2f);
+
+            prevT = t;
+            prevD = d;
+        }
+
+        // end caps of the long rails (outer corners of the table)
+        if (longSide)
+            foreach (float e in new[] { -extent, extent })
+            {
+                float d = InnerAt(e);
+                woodB.Quad(ToWorld(e, d, RailTop), ToWorld(e, outer - bevel, RailTop), ToWorld(e, outer, RailBottom), ToWorld(e, d, RailBottom), DirToWorld(Mathf.Sign(e), 0f), 2f);
+            }
+
+        Mesh mesh = MeshBuilder.SaveCombined("Rail_" + (longSide ? "Long" : "Short") + (sign > 0 ? "_P" : "_N"), woodB, holeB);
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        go.AddComponent<MeshRenderer>().sharedMaterials = new[] { wood, hole };
+        MeshCollider mc = go.AddComponent<MeshCollider>();
+        mc.sharedMesh = mesh;
+        mc.sharedMaterial = pm;
         go.isStatic = true;
     }
 
@@ -392,46 +521,34 @@ public static class BiljardSceneBuilder
         go.isStatic = true;
     }
 
-    static void PocketAt(string name, Transform parent, Vector3 pos, float diameter, Material hole, Material leather)
+    /// <summary>
+    /// Pocket: black hole on the cloth, chrome arc on the rail around the hole (only over the wood, like the
+    /// metal pocket plates in 8 Ball Pool), and the trigger that swallows the ball.
+    /// hole = (x, z, radius).
+    /// </summary>
+    static void PocketAt(string name, Transform parent, Vector3 hole, Material holeMat, float triggerRadius)
     {
-        // leather rim on the rail + black hole through rail and cloth (visual only)
-        float height = RailTop + 0.04f;
-        GameObject rim = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        rim.name = name + " (usnje)";
-        Object.DestroyImmediate(rim.GetComponent<Collider>());
-        rim.transform.SetParent(parent, false);
-        rim.transform.localPosition = new Vector3(pos.x, RailTop - 0.004f, pos.z);
-        rim.transform.localScale = new Vector3(diameter + 0.03f, 0.0055f, diameter + 0.03f);
-        rim.GetComponent<Renderer>().sharedMaterial = leather;
-        rim.isStatic = true;
+        var pos = new Vector3(hole.x, 0f, hole.y);
+        float radius = hole.z;
 
-        GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        visual.name = name;
-        Object.DestroyImmediate(visual.GetComponent<Collider>());
-        visual.transform.SetParent(parent, false);
-        visual.transform.localPosition = new Vector3(pos.x, RailTop - height / 2f + 0.0025f, pos.z);
-        visual.transform.localScale = new Vector3(diameter, height / 2f, diameter);
-        visual.GetComponent<Renderer>().sharedMaterial = hole;
-        visual.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
-        visual.isStatic = true;
+        // black hole: a disc on the cloth + a short dark tube below (the rail cut-out walls are black too)
+        GameObject disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        disc.name = name;
+        Object.DestroyImmediate(disc.GetComponent<Collider>());
+        disc.transform.SetParent(parent, false);
+        disc.transform.localPosition = pos + new Vector3(0f, -0.022f, 0f);
+        disc.transform.localScale = new Vector3(2f * radius, 0.0235f, 2f * radius); // top at y = +0.0015
+        disc.GetComponent<Renderer>().sharedMaterial = holeMat;
+        disc.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+        disc.isStatic = true;
 
-        // polished metal pocket rim (like on a real table / in 8 Ball Pool)
+        // chrome arc on the rail (only the part of the ring that lies over the wood)
         GameObject ring = new GameObject(name + " (obroč)");
         ring.transform.SetParent(parent, false);
-        ring.transform.localPosition = new Vector3(pos.x, RailTop + 0.003f, pos.z);
-        ring.AddComponent<MeshFilter>().sharedMesh = diameter > 0.135f ? pocketRimSide : pocketRimCorner;
+        ring.transform.localPosition = new Vector3(pos.x, RailTop, pos.z);
+        ring.AddComponent<MeshFilter>().sharedMesh = PocketArc(name.Replace(' ', '_') + "_Arc", pos, radius + 0.006f, 0.008f);
         ring.AddComponent<MeshRenderer>().sharedMaterial = chromeMat;
         ring.isStatic = true;
-
-        // deep pocket below the cloth so the hole looks deep from every angle
-        GameObject well = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        well.name = name + " (globina)";
-        Object.DestroyImmediate(well.GetComponent<Collider>());
-        well.transform.SetParent(parent, false);
-        well.transform.localPosition = new Vector3(pos.x, -0.12f, pos.z);
-        well.transform.localScale = new Vector3(diameter * 0.98f, 0.12f, diameter * 0.98f);
-        well.GetComponent<Renderer>().sharedMaterial = hole;
-        well.isStatic = true;
 
         // trigger that swallows the ball
         GameObject trigger = new GameObject(name + " trigger");
@@ -439,8 +556,108 @@ public static class BiljardSceneBuilder
         trigger.transform.localPosition = pos + new Vector3(0f, R, 0f);
         SphereCollider sc = trigger.AddComponent<SphereCollider>();
         sc.isTrigger = true;
-        sc.radius = 0.045f;
+        sc.radius = triggerRadius;
         trigger.AddComponent<Pocket>();
+    }
+
+    /// <summary>Part of a torus around a pocket: only segments whose centre is over the rail (outside the cushion line).</summary>
+    static Mesh PocketArc(string name, Vector3 centre, float major, float minor, int segments = 72, int sides = 12)
+    {
+        var b = new MeshBuilder();
+        float limitX = L / 2f + CushionT, limitZ = W / 2f + CushionT;
+        bool OnRail(float a)
+        {
+            float x = centre.x + Mathf.Cos(a) * major, z = centre.z + Mathf.Sin(a) * major;
+            return Mathf.Abs(x) > limitX + 0.002f || Mathf.Abs(z) > limitZ + 0.002f;
+        }
+        Vector3 P(float u, float a) => new Vector3((major + minor * Mathf.Cos(a)) * Mathf.Cos(u), minor * Mathf.Sin(a), (major + minor * Mathf.Cos(a)) * Mathf.Sin(u));
+        Vector3 Nrm(float u, float a) => new Vector3(Mathf.Cos(a) * Mathf.Cos(u), Mathf.Sin(a), Mathf.Cos(a) * Mathf.Sin(u));
+        for (int i = 0; i < segments; i++)
+        {
+            float u0 = i / (float)segments * Mathf.PI * 2f, u1 = (i + 1) / (float)segments * Mathf.PI * 2f;
+            if (!OnRail((u0 + u1) * 0.5f)) continue;
+            for (int j = 0; j < sides; j++)
+            {
+                float a0 = j / (float)sides * Mathf.PI, a1 = (j + 1) / (float)sides * Mathf.PI; // upper half tube only
+                b.QuadSmooth(P(u0, a0), P(u1, a0), P(u1, a1), P(u0, a1), Nrm(u0, a0), Nrm(u1, a0), Nrm(u1, a1), Nrm(u0, a1));
+            }
+        }
+        return b.Save("Pocket_" + name);
+    }
+
+    /// <summary>Small helper to build meshes face by face (flat or smooth quads, automatic winding, simple UVs).</summary>
+    class MeshBuilder
+    {
+        public readonly List<Vector3> V = new List<Vector3>();
+        public readonly List<Vector3> N = new List<Vector3>();
+        public readonly List<Vector2> UV = new List<Vector2>();
+        public readonly List<int> T = new List<int>();
+
+        /// <summary>Optional custom UV mapping (position -> UV). Without it UVs are planar along the face.</summary>
+        public System.Func<Vector3, Vector2> UvMap;
+
+        /// <summary>Flat quad a-b-c-d with a wanted facing direction; UVs are planar, scaled by uvScale.</summary>
+        public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, float uvScale)
+        {
+            if (normal.sqrMagnitude < 1e-8f) normal = Vector3.Cross(b - a, c - a);
+            normal.Normalize();
+            QuadSmooth(a, b, c, d, normal, normal, normal, normal, uvScale);
+        }
+
+        public void QuadSmooth(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 na, Vector3 nb, Vector3 nc, Vector3 nd, float uvScale = 4f)
+        {
+            Vector3 want = na + nb + nc + nd;
+            int i = V.Count;
+            foreach (var (p, n) in new[] { (a, na), (b, nb), (c, nc), (d, nd) })
+            {
+                V.Add(p);
+                N.Add(n.normalized);
+                UV.Add(UvMap != null ? UvMap(p) : Planar(p, want) * uvScale);
+            }
+            // Unity: front face = clockwise, its normal = Cross(b - a, c - a)
+            bool flip = Vector3.Dot(Vector3.Cross(b - a, c - a) + Vector3.Cross(c - a, d - a), want) < 0f;
+            if (!flip) { T.Add(i); T.Add(i + 1); T.Add(i + 2); T.Add(i); T.Add(i + 2); T.Add(i + 3); }
+            else { T.Add(i); T.Add(i + 2); T.Add(i + 1); T.Add(i); T.Add(i + 3); T.Add(i + 2); }
+        }
+
+        static Vector2 Planar(Vector3 p, Vector3 n)
+        {
+            float ax = Mathf.Abs(n.x), ay = Mathf.Abs(n.y), az = Mathf.Abs(n.z);
+            if (ay >= ax && ay >= az) return new Vector2(p.x, p.z);
+            if (ax >= az) return new Vector2(p.z, p.y);
+            return new Vector2(p.x, p.y);
+        }
+
+        public Mesh Save(string name) => SaveCombined(name, this);
+
+        /// <summary>Combines builders as sub-meshes (one material each) and saves the mesh as an asset.</summary>
+        public static Mesh SaveCombined(string name, params MeshBuilder[] parts)
+        {
+            var mesh = new Mesh { name = name, indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+            var v = new List<Vector3>();
+            var n = new List<Vector3>();
+            var uv = new List<Vector2>();
+            foreach (MeshBuilder p in parts) { v.AddRange(p.V); n.AddRange(p.N); uv.AddRange(p.UV); }
+            mesh.SetVertices(v);
+            mesh.SetNormals(n);
+            mesh.SetUVs(0, uv);
+            mesh.subMeshCount = parts.Length;
+            int offset = 0;
+            for (int s = 0; s < parts.Length; s++)
+            {
+                var tri = new List<int>(parts[s].T.Count);
+                foreach (int t in parts[s].T) tri.Add(t + offset);
+                mesh.SetTriangles(tri, s);
+                offset += parts[s].V.Count;
+            }
+            mesh.RecalculateBounds();
+            mesh.RecalculateTangents();
+
+            string path = MeshDir + "/" + name + ".asset";
+            if (AssetDatabase.LoadAssetAtPath<Mesh>(path) != null) AssetDatabase.DeleteAsset(path);
+            AssetDatabase.CreateAsset(mesh, path);
+            return mesh;
+        }
     }
 
     // ------------------------------------------------------------------ balls, cue, lines
@@ -460,8 +677,8 @@ public static class BiljardSceneBuilder
 
         Rigidbody rb = go.AddComponent<Rigidbody>();
         rb.mass = 0.17f;
-        rb.linearDamping = 0.12f;
-        rb.angularDamping = 0.05f;
+        rb.linearDamping = 0.1f;
+        rb.angularDamping = 0f;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
 
@@ -534,43 +751,6 @@ public static class BiljardSceneBuilder
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
 
-        string path = MeshDir + "/" + name + ".asset";
-        if (AssetDatabase.LoadAssetAtPath<Mesh>(path) != null) AssetDatabase.DeleteAsset(path);
-        AssetDatabase.CreateAsset(mesh, path);
-        return mesh;
-    }
-
-    /// <summary>Torus mesh used as a metal pocket rim.</summary>
-    static Mesh Torus(string name, float major, float minor, int segments = 48, int sides = 12)
-    {
-        var v = new List<Vector3>();
-        var uv = new List<Vector2>();
-        var t = new List<int>();
-        for (int i = 0; i <= segments; i++)
-        {
-            float u = i / (float)segments * Mathf.PI * 2f;
-            for (int j = 0; j <= sides; j++)
-            {
-                float a = j / (float)sides * Mathf.PI * 2f;
-                float rr = major + minor * Mathf.Cos(a);
-                v.Add(new Vector3(rr * Mathf.Cos(u), minor * Mathf.Sin(a), rr * Mathf.Sin(u)));
-                uv.Add(new Vector2(i / (float)segments, j / (float)sides));
-            }
-        }
-        int row = sides + 1;
-        for (int i = 0; i < segments; i++)
-        for (int j = 0; j < sides; j++)
-        {
-            int a = i * row + j, b = (i + 1) * row + j, c = a + 1, d = b + 1;
-            t.Add(a); t.Add(c); t.Add(b);   // clockwise when seen from outside (Unity front face)
-            t.Add(c); t.Add(d); t.Add(b);
-        }
-        var mesh = new Mesh { name = name };
-        mesh.SetVertices(v);
-        mesh.SetUVs(0, uv);
-        mesh.SetTriangles(t, 0);
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
         string path = MeshDir + "/" + name + ".asset";
         if (AssetDatabase.LoadAssetAtPath<Mesh>(path) != null) AssetDatabase.DeleteAsset(path);
         AssetDatabase.CreateAsset(mesh, path);
