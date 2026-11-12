@@ -15,6 +15,6 @@ public class Pocket : MonoBehaviour
     {
         Ball ball = other.attachedRigidbody != null ? other.attachedRigidbody.GetComponent<Ball>() : null;
         if (ball != null)
-            ball.Pocket(name);
+            ball.Pocket(name, transform.position);
     }
 }
