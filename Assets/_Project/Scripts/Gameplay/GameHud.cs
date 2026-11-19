@@ -62,7 +62,10 @@ namespace Billiards.Gameplay
             s = scale;
             white = Texture2D.whiteTexture;
             // modern Windows UI font (falls back to Arial)
+#if !UNITY_WEBGL || UNITY_EDITOR
             if (uiFont == null) uiFont = Font.CreateDynamicFontFromOSFont(new[] { "Bahnschrift", "Segoe UI", "Arial" }, 32);
+#endif
+            // in the browser (WebGL) there are no OS fonts: uiFont stays null and Unity's built-in font is used
             title = new GUIStyle(GUI.skin.label) { fontSize = FontPx(70), fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, richText = true };
             title.normal.textColor = Color.white;
             big = new GUIStyle(GUI.skin.button) { fontSize = FontPx(30), fontStyle = FontStyle.Bold };
